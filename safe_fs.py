@@ -27,13 +27,27 @@ import urllib.request
 from pathlib import Path
 from datetime import datetime
 
+BASE_DIR = Path(__file__).parent.resolve()
+CONFIG_PATH = BASE_DIR / "config.json"
+
+
+def _read_json(path: Path) -> dict:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _write_json(path: Path, data: dict) -> None:
+    path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+
+
 def get_default_gdrive_subfolder() -> str:
     cfg = _read_json(CONFIG_PATH)
     return cfg.get("default_gdrive_folder") or "THIEN UNG PRODUCTION"
 
+
 DEFAULT_GDRIVE_SUBFOLDER = get_default_gdrive_subfolder()
-BASE_DIR = Path(__file__).parent.resolve()
-CONFIG_PATH = BASE_DIR / "config.json"
 
 
 def strip_accents(s: str) -> str:
@@ -100,15 +114,6 @@ ZALO_AFTER_UPLOAD_PATH = BASE_DIR / "zalo_after_upload.json"    # "up xong thì 
 DEFAULT_ZALO_TEMPLATE = "{name}\n{url}"
 
 
-def _read_json(path: Path) -> dict:
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
-        return {}
-
-
-def _write_json(path: Path, data: dict) -> None:
-    path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
 
 
 def build_zalo_text(name: str, url: str) -> str:

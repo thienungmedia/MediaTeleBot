@@ -424,7 +424,7 @@ def handle_message(client: TelegramClient, cfg: dict, msg: dict) -> bool:
         client.send_message(chat_id, welcome, reply_markup=build_home_keyboard())
         return False
 
-    if text.strip().lower() in ("/update", "/version", "cập nhật", "update", "kiểm tra cập nhật", "update bot", "cập nhật bot"):
+    if text.strip().lower() in ("/update", "/version", "/capnhat", "cập nhật", "update", "kiểm tra cập nhật", "update bot", "cập nhật bot"):
         import updater
         client.send_message(chat_id, f"🔍 Đang kiểm tra bản cập nhật (Bản hiện tại: v{updater.CURRENT_VERSION})...")
         res = updater.check_for_updates()
