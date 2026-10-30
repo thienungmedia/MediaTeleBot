@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 Safe File System Operations (NO DELETE ALLOWED) + Google Drive Link Extractor.
 Allowed operations:

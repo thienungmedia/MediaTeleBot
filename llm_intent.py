@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 AI hiểu ngôn ngữ tự nhiên (Gemini API) -> dịch câu nói tuỳ ý thành MỘT lệnh chuẩn
 mà nl_engine đã hỗ trợ. AI KHÔNG tự chạm vào file: mọi thao tác vẫn đi qua bộ công cụ

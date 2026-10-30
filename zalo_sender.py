@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 Gửi tin nhắn Zalo bằng cách điều khiển ứng dụng Zalo trên Mac (giống người dùng thật).
 Cần: Zalo đang mở & đã đăng nhập, màn hình không bị khoá, và đã cấp quyền

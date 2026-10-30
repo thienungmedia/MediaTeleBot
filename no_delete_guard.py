@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 PreToolUse Hook for Antigravity: Hard-blocks any command that attempts to delete files.
 """

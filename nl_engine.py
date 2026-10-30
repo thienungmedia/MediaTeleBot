@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 Natural Language Engine (Vietnamese) for Safe Mac File Manager.
 Supports:

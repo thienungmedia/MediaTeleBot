@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 Telegram Safe File Manager Bot & Antigravity Bridge for macOS.
 - 100% No-Delete Architecture (only browse, search, copy, and non-overwriting move).

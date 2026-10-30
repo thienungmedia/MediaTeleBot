@@ -1,6 +1,6 @@
 {
-  "version": "1.0.3",
-  "release_notes": "• Thêm công cụ 1-Click KiemTraLoi.command để tự động kiểm tra, chẩn đoán và chạy trực tiếp bot gỡ lỗi.\n• CaiDat.command tự động phòng chống lỗi bảo mật macOS TCC khi giải nén trong thư mục Downloads.\n• Tự động kiểm tra và xác thực Bot Token qua Telegram getMe ngay khi cài đặt.",
+  "version": "1.0.4",
+  "release_notes": "• Tương thích 100% với Python 3.9 có sẵn trên macOS (sửa lỗi Type hint str | None).\n• Thêm công cụ 1-Click KiemTraLoi.command để tự động chẩn đoán và chạy trực tiếp bot.\n• CaiDat.command tự động phòng chống lỗi bảo mật macOS TCC khi giải nén trong thư mục Downloads.",
   "files": {
     "bot.py": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/bot.py",
     "safe_fs.py": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/safe_fs.py",
