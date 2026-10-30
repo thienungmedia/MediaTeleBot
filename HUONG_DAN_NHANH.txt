@@ -29,6 +29,12 @@
      ➔ Gạt bật cho Python.
    • Đảm bảo ứng dụng Zalo trên máy Mac đang mở và đã đăng nhập.
 
+5. DÀNH CHO THỢ / CỘNG TÁC VIÊN (UP FILE VỀ DRIVE CỦA CHỦ DỰ ÁN):
+   • Mở link thư mục Google Drive chủ gửi ➔ Bấm "Thêm lối tắt vào Drive" (Add shortcut to Drive).
+   • Nhắn cho bot: /setfolder <dán link Google Drive>
+     (Hoặc click đúp file: DoiThuMucDrive.command).
+   • Từ nay chỉ cần nhắn: "Up file X lên drive", bot sẽ đẩy thẳng về Google Drive của chủ!
+
 ==================================================================
 Chi tiết đầy đủ về mọi câu lệnh và tính năng: xem file README.md!
 ==================================================================
