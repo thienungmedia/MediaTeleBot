@@ -47,8 +47,15 @@ echo ""
 # 2. Kiểm tra file config.json
 echo "2️⃣ Đang kiểm tra cấu hình config.json..."
 if [ ! -f "config.json" ]; then
-    echo "❌ NGUYÊN NHÂN: Chưa có file config.json!"
-    echo "👉 Hãy chạy file 'CaiDat.command' trước để nhập Bot Token."
+    echo "❌ NGUYÊN NHÂN CHÍNH XÁC: Máy này CHƯA TỪNG CÀI ĐẶT BOT (chưa có file config.json)!"
+    echo "👉 Đó là lý do vì sao gửi /start mà bot không trả lời: Vì bot chưa được kết nối với Telegram!"
+    echo ""
+    read -p "👉 Bạn có muốn TIẾN HÀNH CÀI ĐẶT NGAY BÂY GIỜ không? (Y/n): " RUN_INSTALL
+    if [[ ! "$RUN_INSTALL" =~ ^[Nn]$ ]]; then
+        echo "🚀 Đang mở trình cài đặt CaiDat.command..."
+        sleep 1
+        exec ./CaiDat.command
+    fi
     echo ""
     read -p "Nhấn Enter để thoát..."
     exit 1
