@@ -30,11 +30,10 @@
 1. [Hướng dẫn 1: Cách lấy Telegram Bot Token (1 phút)](#1-cách-lấy-telegram-bot-token-trong-1-phút)
 2. [Hướng dẫn 2: Cách lấy Google Gemini API Key miễn phí (1 phút)](#2-cách-lấy-gemini-api-key-miễn-phí)
 3. [Hướng dẫn 3: Cài đặt 1-Click trên máy Mac](#3-cài-đặt-1-click-trên-máy-mac)
-4. [Hướng dẫn 4: Dán Link thư mục Google Drive để Thợ upload về Drive của Chủ](#4-hướng-dẫn-dành-cho-thợ--cộng-tác-viên-dán-link-drive-để-upload-về-drive-của-chủ)
-5. [Hướng dẫn 5: Cấp quyền gửi tin Zalo trên macOS](#5-cấp-quyền-gửi-tin-nhắn-zalo-trên-macos)
-6. [Cẩm nang câu lệnh mẫu thường dùng](#6-cẩm-nang-câu-lệnh-mẫu-thường-dùng)
-7. [Quản lý và Gỡ cài đặt](#7-quản-lý-và-gỡ-cài-đặt)
-8. [Cơ chế tự động cập nhật khi có bản mới](#8-cơ-chế-tự-động-cập-nhật-khi-có-bản-mới)
+4. [Hướng dẫn 4: Cấp quyền gửi tin Zalo trên macOS](#4-cấp-quyền-gửi-tin-nhắn-zalo-trên-macos)
+5. [Cẩm nang câu lệnh mẫu thường dùng](#5-cẩm-nang-câu-lệnh-mẫu-thường-dùng)
+6. [Quản lý và Gỡ cài đặt](#6-quản-lý-và-gỡ-cài-đặt)
+7. [Cơ chế tự động cập nhật khi có bản mới](#7-cơ-chế-tự-động-cập-nhật-khi-có-bản-mới)
 
 ---
 
@@ -142,59 +141,7 @@ Sau khi đã có **Bot Token** (và Gemini API Key):
 
 ---
 
-## 4. HƯỚNG DẪN DÀNH CHO THỢ / CỘNG TÁC VIÊN: DÁN LINK DRIVE ĐỂ UPLOAD VỀ DRIVE CỦA CHỦ
-
-Trong thực tế công việc media, thợ quay phim, flycam hoặc editor thường cần upload dữ liệu trực tiếp vào một thư mục trên Google Drive của **Chủ dự án (Producer / Studio)** mà không phải up lên Drive cá nhân của thợ.
-
-Trợ lý **Mac File Bot** hỗ trợ hoàn hảo quy trình này:
-
-### 🛠️ Quy trình thiết lập 3 bước cực nhanh:
-
-#### Bước 1: Chủ dự án chia sẻ thư mục cho Thợ
-* Chủ dự án tạo thư mục trên Google Drive (ví dụ: `0510 OLAM`, `FLYCAM OFI` hoặc `THIEN UNG PRODUCTION`).
-* Bấm **Chia sẻ (Share)** ➔ Nhập email của Thợ và chọn quyền: **Người chỉnh sửa (Editor)**.
-* Gửi đường link thư mục đó cho Thợ (ví dụ: `https://drive.google.com/drive/folders/1xRaK_aEWV1D6H3YhalfzQ...`).
-
-#### Bước 2: Thợ bấm "Thêm lối tắt vào Drive" (Chỉ làm 1 lần)
-* Thợ mở đường link thư mục đó trên trình duyệt web.
-* Ngay cạnh tên thư mục ở đầu trang, bấm vào biểu tượng hoặc nút:  
-  👉 **"Thêm lối tắt vào Drive" (Add shortcut to Drive)** (hoặc phím tắt `Shift + Z`).
-* Chọn vị trí lưu: **Drive của tôi (My Drive)** ➔ Bấm **Thêm (Add)**.  
-  *(Lúc này, thư mục đó sẽ tự động xuất hiện trong ổ Google Drive trên máy Mac của Thợ!)*
-
-#### Bước 3: Cài đặt link thư mục đó làm nơi upload mặc định cho Bot
-Thợ có thể chọn 1 trong 3 cách sau:
-* **Cách 1 (Ngay trên Telegram - Tiện nhất):**  
-  Nhắn tin cho Bot:  
-  ```text
-  /setfolder https://drive.google.com/drive/folders/1xRaK_aEWV1D6H3YhalfzQ...
-  ```  
-  Hoặc nhắn câu tự nhiên:  
-  ```text
-  đổi thư mục mặc định thành https://drive.google.com/drive/folders/...
-  ```
-  *(Bot sẽ tự động giải mã ra tên thư mục, liên kết ID đám mây và báo thành công ngay)*.
-
-* **Cách 2 (Bằng công cụ 1-Click trên Mac):**  
-  Trong thư mục trợ lý, bấm đúp chuột vào file:  
-  👉 **`DoiThuMucDrive.command`** ➔ Dán link Google Drive vào ➔ Nhấn `Enter`.
-
-* **Cách 3 (Khi cài đặt lần đầu):**  
-  Dán link Google Drive ngay tại Bước 3 trong file `CaiDat.command`.
-
----
-
-### 🚀 Cách sử dụng hàng ngày:
-Sau khi đã cài xong, mỗi khi đi quay về hoặc xuất video xong, thợ chỉ cần mở Telegram trên điện thoại và nhắn:
-* *"Up file flycam ofi lên drive"*
-* *"Up thư mục 0510 lên drive"*
-* *"Up clip test trong source lên drive"*
-
-👉 **Kết quả:** Bot trên máy Mac sẽ tự động copy file vào đúng thư mục đó, Google Drive tự động đẩy dữ liệu về tài khoản Drive của Chủ dự án, và bot gửi lại link chia sẻ ngay trên Telegram!
-
----
-
-## 5. CẤP QUYỀN GỬI TIN NHẮN ZALO TRÊN MACOS
+## 4. CẤP QUYỀN GỬI TIN NHẮN ZALO TRÊN MACOS
 
 Tính năng gửi Zalo hoạt động bằng cách điều khiển ứng dụng [Zalo.app](file:///Applications/Zalo.app) chính chủ trên Mac (mô phỏng thao tác dán tin nhắn như người thật để bảo vệ an toàn 100% cho tài khoản Zalo của bạn, tránh bị khoá nick như các API lậu).
 
@@ -206,7 +153,7 @@ Tính năng gửi Zalo hoạt động bằng cách điều khiển ứng dụng 
 
 ---
 
-## 6. CẨM NANG CÂU LỆNH MẪU THƯỜNG DÙNG
+## 5. CẨM NANG CÂU LỆNH MẪU THƯỜNG DÙNG
 
 Bạn có thể nhắn tin cho Bot bằng tiếng Việt tự nhiên bất cứ lúc nào:
 
@@ -255,7 +202,7 @@ Bạn có thể nhắn tin cho Bot bằng tiếng Việt tự nhiên bất cứ 
 
 ---
 
-## 7. QUẢN LÝ VÀ GỠ CÀI ĐẶT
+## 6. QUẢN LÝ VÀ GỠ CÀI ĐẶT
 
 Mọi thao tác quản lý đều có sẵn file bấm đúp chuột trong thư mục:
 
@@ -265,7 +212,7 @@ Mọi thao tác quản lý đều có sẵn file bấm đúp chuột trong thư 
 
 ---
 
-## 8. CƠ CHẾ TỰ ĐỘNG CẬP NHẬT KHI CÓ BẢN MỚI
+## 7. CƠ CHẾ TỰ ĐỘNG CẬP NHẬT KHI CÓ BẢN MỚI
 
 Hệ thống đã tích hợp sẵn cơ chế **Auto-Update** thông minh:
 
