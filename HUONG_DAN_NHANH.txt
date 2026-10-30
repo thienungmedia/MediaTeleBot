@@ -1,0 +1,25 @@
+==================================================================
+🎬 HƯỚNG DẪN CÀI ĐẶT NHANH (MAC FILE BOT)
+==================================================================
+
+1. CHUẨN BỊ TRƯỚC KHI CÀI:
+   • Mã Bot Token Telegram (Lấy từ @BotFather trên Telegram).
+   • Mã Gemini API Key (Lấy miễn phí tại: https://aistudio.google.com/apikey).
+   (Chi tiết từng bước kèm ảnh xem file README.md)
+
+2. CÀI ĐẶT TRONG 10 GIÂY:
+   • Bấm đúp chuột vào file: CaiDat.command
+   • Dán Bot Token và Gemini API Key theo hướng dẫn trên màn hình.
+
+3. KÍCH HOẠT:
+   • Mở Telegram, tìm con bot bạn vừa tạo và gửi: /start
+   • Bot sẽ tự động nhận diện bạn là CHỦ NHÂN DUY NHẤT!
+
+4. NẾU DÙNG TÍNH NĂNG GỬI ZALO TỰ ĐỘNG:
+   • Vào Cài đặt hệ thống ➔ Quyền riêng tư & Bảo mật ➔ Trợ năng (Accessibility)
+     ➔ Gạt bật cho Python.
+   • Đảm bảo ứng dụng Zalo trên máy Mac đang mở và đã đăng nhập.
+
+==================================================================
+Chi tiết đầy đủ về mọi câu lệnh và tính năng: xem file README.md!
+==================================================================

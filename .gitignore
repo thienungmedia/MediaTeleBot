@@ -1,0 +1,24 @@
+# Private config with tokens
+config.json
+.env
+
+# Logs and runtime databases
+*.log
+*.err.log
+*.db
+inbox.jsonl
+outbox.jsonl
+outbox_result.json
+system_info.json
+zalo_pending.json
+zalo_after_upload.json
+
+# Temporary & backup files
+*.tmp*
+_backup_*/
+
+# Python cache & macOS metadata
+__pycache__/
+*.py[cod]
+.DS_Store
+.agents/

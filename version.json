@@ -1,0 +1,13 @@
+{
+  "version": "1.0.0",
+  "release_notes": "• Bản phát hành chính thức đầu tiên của MediaTeleBot.\n• Quản lý file Mac từ xa, tìm kiếm ổ cứng ngoài, upload Google Drive, tự động gửi Zalo.",
+  "files": {
+    "bot.py": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/bot.py",
+    "safe_fs.py": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/safe_fs.py",
+    "nl_engine.py": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/nl_engine.py",
+    "llm_intent.py": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/llm_intent.py",
+    "zalo_sender.py": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/zalo_sender.py",
+    "updater.py": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/updater.py",
+    "README.md": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/README.md"
+  }
+}
