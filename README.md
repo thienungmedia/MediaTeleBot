@@ -26,12 +26,56 @@
 
 ## 📋 MỤC LỤC HƯỚNG DẪN
 
+0. [Yêu cầu quan trọng trước khi sử dụng (Google Drive & Chống Sleep)](#-2-yêu-cầu-quan-trọng-trước-khi-sử-dụng)
 1. [Hướng dẫn 1: Cách lấy Telegram Bot Token (1 phút)](#1-cách-lấy-telegram-bot-token-trong-1-phút)
 2. [Hướng dẫn 2: Cách lấy Google Gemini API Key miễn phí (1 phút)](#2-cách-lấy-gemini-api-key-miễn-phí)
 3. [Hướng dẫn 3: Cài đặt 1-Click trên máy Mac](#3-cài-đặt-1-click-trên-máy-mac)
 4. [Hướng dẫn 4: Cấp quyền gửi tin Zalo trên macOS](#4-cấp-quyền-gửi-tin-nhắn-zalo-trên-macos)
 5. [Cẩm nang câu lệnh mẫu thường dùng](#5-cẩm-nang-câu-lệnh-mẫu-thường-dùng)
 6. [Quản lý và Gỡ cài đặt](#6-quản-lý-và-gỡ-cài-đặt)
+7. [Cơ chế tự động cập nhật khi có bản mới](#7-cơ-chế-tự-động-cập-nhật-khi-có-bản-mới)
+
+---
+
+## ⚠️ 2 YÊU CẦU QUAN TRỌNG TRƯỚC KHI SỬ DỤNG
+
+Để bot có thể hoạt động trơn tru 24/7 từ xa và thực hiện đầy đủ các tính năng tải file / lấy link Google Drive, máy Mac của bạn cần đáp ứng 2 điều kiện sau:
+
+### 1. ☁️ Bắt buộc cài đặt ứng dụng Google Drive trên máy Mac
+Bot quản lý và đồng bộ file trực tiếp thông qua ứng dụng Google Drive chính thức dành cho macOS (để lưu file vào đám mây và tự động lấy link chia sẻ cho khách).
+
+* **Link tải chính thức từ Google:**  
+  👉 **[Tải Google Drive cho máy tính (macOS)](https://www.google.com/drive/download/)**  
+  *(Tải về file `.dmg`, mở lên và kéo biểu tượng Google Drive vào Applications để cài đặt)*.
+* **Sau khi cài đặt:**
+  * Mở ứng dụng **Google Drive** và đăng nhập tài khoản Gmail/Google Workspace của bạn.
+  * Chọn chế độ đồng bộ (Stream files hoặc Mirror files). Ổ đĩa Google Drive sẽ xuất hiện trên máy Mac của bạn.
+  * **Mẹo mục "Được chia sẻ với tôi":** Khi thợ, đối tác hoặc khách hàng gửi link Google Drive cho bạn, bạn chỉ cần bấm mở link đó trên trình duyệt 1 lần là bot sẽ tự động quét và lấy link được bất kỳ lúc nào!
+
+---
+
+### 2. ⚡ Cài đặt máy Mac luôn thức (Chống Sleep 24/7)
+Bot hoạt động như một máy chủ dịch vụ cá nhân chạy ngầm trên Mac. **Nếu máy Mac rơi vào trạng thái ngủ (Sleep), CPU và kết nối WiFi sẽ tạm ngắt**, dẫn đến việc khi bạn ở ngoài nhắn tin qua Telegram thì bot sẽ không nhận được lệnh ngay.
+
+Bạn chỉ cần thiết lập để **màn hình vẫn tắt/khoá để tiết kiệm điện và bảo vệ màn hình, nhưng máy Mac vẫn chạy ngầm kết nối mạng**:
+
+#### Cách 1: Thiết lập trực tiếp trong Cài đặt hệ thống (Khuyên dùng - Không cần cài thêm app)
+* **Bước 1:** Mở **Cài đặt hệ thống (System Settings)** trên máy Mac.
+* **Bước 2:** Vào mục **Màn hình (Displays)** ➔ Bấm vào nút **Nâng cao... (Advanced...)** (nằm ở góc dưới cùng bên phải cửa sổ).
+* **Bước 3:** Bật công tắc: **"Ngăn chặn tự động chuyển sang chế độ ngủ khi màn hình tắt"** (*Prevent automatic sleeping when the display is off*).
+* **Bước 4 (Tiết kiệm điện/màn hình):** Vào mục **Màn hình khoá (Lock Screen)**:
+  * Mục *"Tắt màn hình khi không hoạt động"* (*Turn display off when inactive*): Đặt thời gian tuỳ ý (ví dụ: `15 phút` hoặc `30 phút`).
+  * 👉 **Kết quả:** Sau 15-30 phút không dùng, màn hình Mac sẽ tắt đen để nghỉ ngơi và bảo mật, nhưng bot Telegram và WiFi vẫn chạy ngầm 24/7 để bạn điều khiển từ xa bất kỳ lúc nào!
+* **Dành riêng cho MacBook:**
+  * Cắm dây sạc nguồn nếu muốn máy chạy liên tục khi bạn ra ngoài.
+  * Vào mục **Pin (Battery)** ➔ **Tuỳ chọn (Options)** ➔ Bật: **"Đánh thức khi có truy cập mạng"** (*Wake for network access*).
+
+#### Cách 2: Dùng ứng dụng giữ thức máy miễn phí 1-Click
+Nếu bạn thích có 1 nút bấm bật/tắt nhanh trên thanh Menu Bar:
+* Cài ứng dụng **Amphetamine** (Hoàn toàn miễn phí trên Mac App Store): Giúp giữ máy luôn thức theo ý muốn chỉ với 1 click.
+* Hoặc khi cần giữ thức nhanh từ dòng lệnh, bạn chỉ cần mở Terminal gõ: `caffeinate -d` là máy sẽ không bao giờ ngủ.
+
+---
 
 ---
 

@@ -2,6 +2,15 @@
 🎬 HƯỚNG DẪN CÀI ĐẶT NHANH (MAC FILE BOT)
 ==================================================================
 
+⚠️ 2 ĐIỀU KIỆN QUAN TRỌNG TRƯỚC KHI DÙNG:
+   1. Cài ứng dụng Google Drive trên máy Mac:
+      👉 Tải tại: https://www.google.com/drive/download/
+      (Đăng nhập tài khoản Google của bạn sau khi cài).
+   2. Chống máy ngủ (Sleep) để bot nhận lệnh 24/7 từ xa:
+      • Vào Cài đặt hệ thống ➔ Màn hình (Displays) ➔ Nâng cao (Advanced)
+        ➔ Bật "Ngăn chặn tự động chuyển sang chế độ ngủ khi màn hình tắt".
+      • Hoặc cài app miễn phí "Amphetamine" trên Mac App Store.
+
 1. CHUẨN BỊ TRƯỚC KHI CÀI:
    • Mã Bot Token Telegram (Lấy từ @BotFather trên Telegram).
    • Mã Gemini API Key (Lấy miễn phí tại: https://aistudio.google.com/apikey).
