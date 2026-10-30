@@ -14,7 +14,26 @@ echo "• 🤖 Tích hợp AI Gemini hiểu câu nói tiếng Việt tự nhiên
 echo "=================================================================="
 echo ""
 
-# 1. Tìm Python 3
+# 1. Tự động kiểm tra và xử lý nếu chạy trong thư mục Downloads
+CURRENT_DIR="$(pwd)"
+if [[ "$CURRENT_DIR" == *"/Downloads"* ]]; then
+    SAFE_DIR="$HOME/MacFileBot_Assistant"
+    echo "⚠️ PHÁT HIỆN: Thư mục đang nằm trong mục 'Downloads' (Tải về)!"
+    echo "Hệ điều hành macOS sẽ CHẶN quyền chạy ngầm của các file trong Downloads."
+    echo "👉 Đang tự động chuyển sang thư mục an toàn: $SAFE_DIR ..."
+    mkdir -p "$SAFE_DIR"
+    cp -R "$CURRENT_DIR/"* "$SAFE_DIR/"
+    cd "$SAFE_DIR"
+    CURRENT_DIR="$SAFE_DIR"
+    echo "✅ Đã chuyển vị trí cài đặt thành công: $CURRENT_DIR"
+    echo ""
+fi
+
+# Xoá cờ kiểm duyệt bảo mật com.apple.quarantine của macOS
+xattr -dr com.apple.quarantine "$CURRENT_DIR" 2>/dev/null
+chmod +x *.command 2>/dev/null
+
+# 2. Tìm Python 3
 PYTHON_PATH=""
 if [ -x "/Library/Frameworks/Python.framework/Versions/3.14/bin/python3" ]; then
     PYTHON_PATH="/Library/Frameworks/Python.framework/Versions/3.14/bin/python3"
@@ -27,8 +46,8 @@ elif command -v python3 >/dev/null 2>&1; then
 fi
 
 if [ -z "$PYTHON_PATH" ]; then
-    echo "❌ Lỗi: Máy của bạn chưa cài Python 3!"
-    echo "👉 Vui lòng vào https://www.python.org/downloads/ để tải và cài đặt Python 3 (hoặc cài qua Homebrew: brew install python3)."
+    echo "❌ Lỗi: Máy Mac của bạn chưa cài Python 3!"
+    echo "👉 Vui lòng vào https://www.python.org/downloads/ để tải và cài đặt Python 3 miễn phí."
     echo ""
     read -p "Nhấn Enter để thoát..."
     exit 1
@@ -37,14 +56,15 @@ fi
 echo "✅ Đã tìm thấy Python: $PYTHON_PATH"
 echo ""
 
-# 2. Nhập cấu hình
-CURRENT_DIR="$(pwd)"
+# 3. Nhập cấu hình
 PLIST_NAME="com.macfilebot.telegrambot"
 PLIST_PATH="$HOME/Library/LaunchAgents/${PLIST_NAME}.plist"
 
 echo "------------------------------------------------------------------"
 echo "📋 BƯỚC 1: CẤU HÌNH BOT TELEGRAM"
-echo "(Xem hướng dẫn chi tiết cách tạo bot trong file README.md)"
+echo "⚠️ LƯU Ý QUAN TRỌNG: Mỗi người/máy Mac PHẢI dùng 1 con Bot riêng!"
+echo "   (Tạo miễn phí trong 30 giây bằng cách chat /newbot với @BotFather)"
+echo "   KHÔNG dùng chung Token của người khác vì sẽ bị khoá bảo mật."
 echo "------------------------------------------------------------------"
 
 EXISTING_TOKEN=""
@@ -57,16 +77,47 @@ if [ -f "config.json" ]; then
     EXISTING_FOLDER=$("$PYTHON_PATH" -c "import json; cfg=json.load(open('config.json')); print(cfg.get('default_gdrive_folder','PRODUCTION'))" 2>/dev/null)
 fi
 
-PROMPT_TOKEN="Nhập mã Bot Token Telegram"
-if [ -n "$EXISTING_TOKEN" ]; then
-    PROMPT_TOKEN="$PROMPT_TOKEN [Enter để giữ cũ: ${EXISTING_TOKEN:0:10}...]"
-fi
-read -p "$PROMPT_TOKEN: " INPUT_TOKEN
-BOT_TOKEN="${INPUT_TOKEN:-$EXISTING_TOKEN}"
+BOT_TOKEN=""
+BOT_USERNAME=""
+while [ -z "$BOT_USERNAME" ]; do
+    PROMPT_TOKEN="Nhập mã Bot Token Telegram"
+    if [ -n "$EXISTING_TOKEN" ]; then
+        PROMPT_TOKEN="$PROMPT_TOKEN [Enter để giữ cũ: ${EXISTING_TOKEN:0:10}...]"
+    fi
+    read -p "$PROMPT_TOKEN: " INPUT_TOKEN
+    BOT_TOKEN="${INPUT_TOKEN:-$EXISTING_TOKEN}"
+    BOT_TOKEN="$(echo "$BOT_TOKEN" | tr -d '[:space:]')"
 
-while [ -z "$BOT_TOKEN" ]; do
-    echo "⚠️ Bot Token là bắt buộc để bot có thể hoạt động!"
-    read -p "Vui lòng nhập Bot Token: " BOT_TOKEN
+    if [ -z "$BOT_TOKEN" ]; then
+        echo "⚠️ Bot Token là bắt buộc để bot có thể hoạt động!"
+        continue
+    fi
+
+    echo "📡 Đang kiểm tra mã Bot Token với Telegram..."
+    BOT_CHECK=$("$PYTHON_PATH" -c "
+import urllib.request, json, sys
+token = '''$BOT_TOKEN'''.strip()
+url = f'https://api.telegram.org/bot{token}/getMe'
+try:
+    req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+    with urllib.request.urlopen(req, timeout=10) as resp:
+        data = json.loads(resp.read().decode('utf-8'))
+        if data.get('ok'):
+            print(data['result'].get('username', ''))
+        else:
+            sys.exit(1)
+except Exception:
+    sys.exit(1)
+" 2>/dev/null)
+
+    if [ -n "$BOT_CHECK" ]; then
+        BOT_USERNAME="$BOT_CHECK"
+        echo "✅ KẾT NỐI THÀNH CÔNG với Bot: @$BOT_USERNAME"
+    else
+        echo "❌ Lỗi: Mã Bot Token không hợp lệ hoặc máy không có mạng!"
+        echo "👉 Bạn hãy kiểm tra lại mã Token lấy từ @BotFather (ví dụ: 123456789:ABCdef...)"
+        EXISTING_TOKEN=""
+    fi
 done
 
 echo ""
@@ -80,6 +131,7 @@ if [ -n "$EXISTING_KEY" ]; then
 fi
 read -p "$PROMPT_KEY: " INPUT_KEY
 GEMINI_KEY="${INPUT_KEY:-$EXISTING_KEY}"
+GEMINI_KEY="$(echo "$GEMINI_KEY" | tr -d '[:space:]')"
 
 echo ""
 echo "------------------------------------------------------------------"
@@ -91,7 +143,7 @@ echo "------------------------------------------------------------------"
 read -p "Dán Link hoặc Nhập Tên thư mục [Mặc định: $EXISTING_FOLDER]: " INPUT_FOLDER
 GDRIVE_FOLDER="${INPUT_FOLDER:-$EXISTING_FOLDER}"
 
-# Tạo config.json
+# Tạo config.json và giải phóng owner_id để người cài đặt nhắn /start là nhận làm chủ nhân ngay
 "$PYTHON_PATH" -c "
 import json, sys
 sys.path.append('.')
@@ -101,10 +153,9 @@ cfg = safe_fs._read_json(safe_fs.CONFIG_PATH)
 cfg['bot_token'] = '''$BOT_TOKEN'''.strip()
 cfg['gemini_api_key'] = '''$GEMINI_KEY'''.strip()
 cfg['gemini_model'] = 'gemini-3.1-flash-lite'
-if 'owner_id' not in cfg:
-    cfg['owner_id'] = None
-if 'chat_id' not in cfg:
-    cfg['chat_id'] = None
+cfg['owner_id'] = None
+cfg['chat_id'] = None
+cfg['username'] = ''
 if 'last_update_id' not in cfg:
     cfg['last_update_id'] = 0
 
@@ -118,14 +169,15 @@ if res.get('folder_url'):
 "
 
 chmod 600 config.json
-chmod +x bot.py safe_fs.py nl_engine.py llm_intent.py zalo_sender.py no_delete_guard.py 2>/dev/null
+chmod +x bot.py safe_fs.py nl_engine.py llm_intent.py zalo_sender.py no_delete_guard.py updater.py 2>/dev/null
 
 echo ""
 echo "⚙️ Đang thiết lập dịch vụ chạy ngầm LaunchAgent cho máy Mac..."
 mkdir -p "$HOME/Library/LaunchAgents"
 
-# Dừng dịch vụ cũ nếu có
+# Dừng dịch vụ cũ nếu đang chạy
 launchctl unload "$PLIST_PATH" 2>/dev/null
+pkill -f "${CURRENT_DIR}/bot.py" 2>/dev/null
 
 cat <<EOF > "$PLIST_PATH"
 <?xml version="1.0" encoding="UTF-8"?>
@@ -162,23 +214,23 @@ cat <<EOF > "$PLIST_PATH"
 </plist>
 EOF
 
-launchctl load "$PLIST_PATH"
+launchctl load "$PLIST_PATH" 2>/dev/null
+launchctl kickstart -k "gui/$(id -u)/${PLIST_NAME}" 2>/dev/null
 
 echo ""
 echo "=================================================================="
 echo "🎉 CHÚC MỪNG! ĐÃ CÀI ĐẶT THÀNH CÔNG TRỢ LÝ QUẢN LÝ FILE MAC! 🎉"
 echo "=================================================================="
-echo "Bot đang chạy ngầm trên máy của bạn (kể cả khi khởi động lại máy)."
+echo "Bot đang chạy ngầm trên máy Mac của bạn (kể cả khi khởi động lại máy)."
 echo ""
-echo "👉 BƯỚC TIẾP THEO (RẤT QUAN TRỌNG):"
+echo "👉 BƯỚC KÍCH HOẠT (RẤT QUAN TRỌNG):"
 echo "1. Mở ứng dụng Telegram trên điện thoại hoặc máy tính."
-echo "2. Tìm con bot bạn vừa tạo và gửi tin nhắn: /start"
-echo "3. Bot sẽ tự động NHẬN DIỆN BẠN LÀ CHỦ NHÂN DUY NHẤT và khoá bảo mật."
-echo "   (Bất kỳ người lạ nào nhắn vào bot sẽ bị từ chối 100%)."
+echo "2. Tìm kiếm đúng con Bot của bạn: @$BOT_USERNAME"
+echo "3. Bấm START (hoặc gửi tin nhắn: /start)"
+echo "4. Bot sẽ tự động NHẬN DIỆN BẠN LÀ CHỦ NHÂN DUY NHẤT và khoá bảo mật."
 echo ""
-echo "💡 NẾU BẠN DÙNG TÍNH NĂNG GỬI ZALO:"
-echo "• Vào: Cài đặt hệ thống (System Settings) ➔ Quyền riêng tư & Bảo mật"
-echo "  ➔ Trợ năng (Accessibility) ➔ Bật cho Python."
+echo "💡 NẾU BẠN GỬI /start MÀ KHÔNG THẤY TRẢ LỜI:"
+echo "• Click đúp vào file 'KiemTraLoi.command' trong thư mục này để xem trực tiếp lỗi!"
 echo "=================================================================="
 echo ""
 read -p "Nhấn Enter để hoàn tất..."

@@ -23,6 +23,8 @@
 3. KÍCH HOẠT:
    • Mở Telegram, tìm con bot bạn vừa tạo và gửi: /start
    • Bot sẽ tự động nhận diện bạn là CHỦ NHÂN DUY NHẤT!
+   • 💡 NẾU GỬI /start KHÔNG THẤY TRẢ LỜI:
+     Bấm đúp vào file "KiemTraLoi.command" để kiểm tra lỗi và chạy trực tiếp!
 
 4. NẾU DÙNG TÍNH NĂNG GỬI ZALO TỰ ĐỘNG:
    • Vào Cài đặt hệ thống ➔ Quyền riêng tư & Bảo mật ➔ Trợ năng (Accessibility)
