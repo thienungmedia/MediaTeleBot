@@ -85,6 +85,8 @@ def clean_polite_phrases(s: str) -> str:
         r"\s+để\s+gửi\s+khách.*$",
         r"\s+gửi\s+khách.*$",
         r"\s+trên\s+(?:google\s*drive|gg\s*drive|drive).*$",
+        r"\s+(?:thợ|khách|ai\s+đó|người\s+khác)\s+(?:gửi|share)(?:\s+cho\s+tôi)?.*$",
+        r"\s+(?:trong\s+|ở\s+)?(?:mục\s+)?(?:được\s+chia\s+sẻ(?:\s+với\s+tôi)?|shared\s+with\s+me).*$",
         r"\s+giúp\s+tôi.*$",
         r"\s+giúp\s+mình.*$",
         r"\s+cho\s+tôi.*$",
@@ -108,6 +110,8 @@ def clean_polite_phrases(s: str) -> str:
         r"^(không\s*,?\s*|à\s*,?\s*|ừ\s*,?\s*|ý\s+tôi\s+là\s+)+",
         r"^(cho\s+tôi\s+xin|cho\s+xin|lấy\s+cho\s+tôi|lấy\s+giúp\s+tôi|cho\s+tôi|giúp\s+tôi|tôi\s+muốn|hãy|làm\s+ơn|lại)\s+",
         r"^(link\s+google\s+drive|link\s+gg\s+drive|link\s+drive|link\s+của|link|đường\s+link)\s+",
+        r"^(?:bác\s+|anh\s+)?(?:thợ|khách|ai\s+đó|người\s+khác)\s+(?:có\s+)?(?:gửi|share)(?:\s+cho\s+tôi|\s+qua)?\s+",
+        r"^(?:trong\s+|ở\s+)?(?:mục\s+)?(?:được\s+chia\s+sẻ(?:\s+với\s+tôi)?|shared\s+with\s+me)\s+",
         r"^(cái\s+|các\s+|những\s+|tổng\s+|lại\s+)+",
         r"^(thư\s+mục|folder|file|tệp|tập\s+tin|ổ\s+đĩa|ổ\s+cứng|ổ)\s+",
         r"^(cái\s+|các\s+|những\s+|tổng\s+|lại\s+)+",
@@ -143,16 +147,18 @@ def parse_source_specification(raw_src: str) -> tuple[str, str | None, str | Non
     root_hint = None
 
     loc_match = re.search(
-        r"\s+(?:ngoài|ở\s+ngoài|trong|ở\s+trong|ở|bên|trên)\s+(?:ổ\s+đĩa\s+|ổ\s+cứng\s+|ổ\s+)?(desktop|màn\s+hình|downloads?|tải\s+về|documents?|film\s*data|google\s*drive|gg\s*drive|drive)$",
+        r"\s+(?:ngoài|ở\s+ngoài|trong|ở\s+trong|ở|bên|trên)\s+(?:ổ\s+đĩa\s+|ổ\s+cứng\s+|ổ\s+)?(desktop|màn\s+hình|downloads?|tải\s+về|documents?|film\s*data|google\s*drive|gg\s*drive|drive|mục\s+được\s+chia\s+sẻ|được\s+chia\s+sẻ(?:\s+với\s+tôi)?|shared\s+with\s+me)$",
         s,
         flags=re.IGNORECASE,
     )
     if loc_match:
         root_hint = loc_match.group(1).lower()
         s = s[: loc_match.start()].strip()
+        if any(kw in strip_accents(root_hint) for kw in ("chia se", "shared")):
+            return clean_polite_phrases(s), "Được chia sẻ với tôi", "drive", type_hint
 
     in_match = re.search(
-        r"^(.+?)\s+(?:trong|ở\s+trong|ngoài|ở\s+ngoài)\s+(?:thư\s+mục\s+|folder\s+)?(.+)$",
+        r"^(.+?)\s+(?:trong|ở\s+trong|ngoài|ở\s+ngoài)\s+(?:thư\s+mục\s+|folder\s+|mục\s+)?(.+)$",
         s,
         flags=re.IGNORECASE,
     )
@@ -162,6 +168,8 @@ def parse_source_specification(raw_src: str) -> tuple[str, str | None, str | Non
         p_norm = strip_accents(parent_hint)
         if p_norm in ("desktop", "man hinh", "downloads", "download", "documents", "film data", "drive", "google drive", "gg drive"):
             return item_name, None, p_norm, type_hint
+        if any(kw in p_norm for kw in ("duoc chia se", "chia se", "shared", "tho gui", "khach gui")):
+            return item_name, "Được chia sẻ với tôi", "drive", type_hint
         return item_name, parent_hint, root_hint, type_hint
 
     return clean_polite_phrases(s), None, root_hint, type_hint
@@ -784,6 +792,16 @@ def parse_and_execute_nl(text: str, chat_id: int = 0, _from_llm: bool = False) -
         if loc_path and loc_path.exists():
             return {"handled": True, "open_dir": str(loc_path)}
 
+    # 7.5 Check collaborator / shared with me queries
+    # Ví dụ: "thợ gửi file flycam ofi", "bác thợ gửi cho tôi file flycam ofi", "file thợ gửi flycam ofi", "trong mục được chia sẻ flycam ofi"
+    shared_match = re.search(
+        r"^(?:(?:bác\s+|anh\s+)?(?:thợ|khách|người\s+khác|ai\s+đó)\s+(?:có\s+)?(?:gửi|share|chuyển)|(?:trong\s+|ở\s+)?(?:mục\s+)?(?:được\s+chia\s+sẻ|shared\s+with\s+me))\b",
+        t,
+        flags=re.IGNORECASE,
+    )
+    if shared_match:
+        return _smart_search_reply(t)
+
     # 8. Search file/folder (smart search: ưu tiên SOURCE & FILM DATA, liệt kê cả kết quả liên quan)
     find_match = re.search(r"^(?:tìm|tìm\s+kiếm|kiếm)\s+(.+)$", t, flags=re.IGNORECASE)
     if find_match:
@@ -1160,18 +1178,72 @@ def smart_search(raw_query: str, limit: int = 12) -> tuple[list[dict], list[str]
 
 
 def _smart_search_reply(raw_query: str) -> dict:
-    in_gdrive = bool(re.search(r"(?:trong|ở|trên|tại)\s+(?:google\s*drive|gg\s*drive|drive)\b", raw_query, flags=re.IGNORECASE))
+    q = raw_query.strip()
+    is_shared_intent = False
+    in_gdrive = bool(re.search(r"(?:trong|ở|trên|tại)\s+(?:google\s*drive|gg\s*drive|drive)\b", q, flags=re.IGNORECASE))
 
-    clean_q = re.sub(r"\s+(?:trong|ở|trên|tại)\s+(?:google\s*drive|gg\s*drive|drive)\b.*$", "", raw_query, flags=re.IGNORECASE)
+    # Detect explicit shared with me / collaborator query
+    shared_patterns = [
+        r"(?:trong|ở|tại)\s+(?:mục\s+|phần\s+)?(?:được\s+chia\s+sẻ(?:\s+với\s+tôi)?|shared\s+with\s+me)\b",
+        r"(?:mục\s+|phần\s+)?(?:được\s+chia\s+sẻ(?:\s+với\s+tôi)?|shared\s+with\s+me)\b",
+        r"(?:bác\s+|anh\s+)?(?:thợ|khách|ai\s+đó|người\s+khác)\s+(?:có\s+)?(?:gửi|share)(?:\s+cho\s+tôi|\s+qua)?\b",
+    ]
+    for p in shared_patterns:
+        if re.search(p, q, flags=re.IGNORECASE):
+            is_shared_intent = True
+            in_gdrive = True
+            q = re.sub(p, " ", q, flags=re.IGNORECASE)
+
+    clean_q = re.sub(r"\s+(?:trong|ở|trên|tại)\s+(?:google\s*drive|gg\s*drive|drive)\b.*$", "", q, flags=re.IGNORECASE)
     clean_q = re.sub(r"\s+(?:trong|ở|trên|tại)\s+(?:film\s*data|ổ\s*film|ổ\s*cứng)\b.*$", "", clean_q, flags=re.IGNORECASE)
     clean_q = re.sub(r"\s+(?:ngoài|ở|trên|trong)\s+desktop\b.*$", "", clean_q, flags=re.IGNORECASE)
     clean_q = clean_polite_phrases(clean_q)
-    clean_q = re.sub(r"^(?:thư\s+mục|folder|file|tập\s+tin|mục)\s+", "", clean_q, flags=re.IGNORECASE).strip()
 
+    # Strip prefixes like 'tìm', 'link', 'file', 'thư mục'
+    prefixes = [
+        r"^(?:tìm|tìm\s+kiếm|kiếm)\s+",
+        r"^(?:lấy\s+link|xin\s+link|gửi\s+link|link|đường\s+link)\s+",
+        r"^(?:thư\s+mục|folder|file|tập\s+tin|tệp|mục)\s+",
+        r"^(?:cho\s+tôi|giúp\s+tôi|xem|kiểm\s+tra)\s+",
+    ]
+    for _ in range(4):
+        for pat in prefixes:
+            clean_q = re.sub(pat, "", clean_q, flags=re.IGNORECASE).strip()
+
+    suffixes = [
+        r"\s+(?:cho\s+tôi|giúp\s+tôi|với|nhé|nha|ạ|đi|luôn)$",
+        r"\s+để\s+gửi\s+khách$",
+        r"\s+gửi\s+khách$",
+    ]
+    for _ in range(3):
+        for pat in suffixes:
+            clean_q = re.sub(pat, "", clean_q, flags=re.IGNORECASE).strip()
+
+    clean_q = re.sub(r"\s+", " ", clean_q).strip(" \"',.")
     shown_q = clean_q or raw_query
 
-    gd_raw = query_gdrive_items(clean_q) if clean_q else []
+    gd_raw = query_gdrive_items(clean_q, prefer_shared=is_shared_intent) if clean_q else []
     gd_matches = [m for m in gd_raw if not m.get("name", "").startswith("._")]
+
+    if is_shared_intent:
+        shared_matches = [m for m in gd_matches if m.get("is_shared")]
+        matches_to_show = shared_matches or gd_matches
+        if not matches_to_show:
+            return {
+                "handled": True,
+                "reply": (
+                    f"🔍 Không tìm thấy mục nào khớp với '{shown_q}' trong mục 'Được chia sẻ với tôi'.\n\n"
+                    f"💡 Mẹo: Trên Google Drive, khi thợ hoặc ai đó gửi link chia sẻ, bạn chỉ cần click mở link 1 lần thì mục đó mới xuất hiện trong 'Được chia sẻ với tôi' để bot quét được."
+                ),
+            }
+        lines = [f"🤝 KẾT QUẢ TÌM TRONG MỤC 'ĐƯỢC CHIA SẺ VỚI TÔI' (Google Drive) cho '{shown_q}':\n"]
+        for i, m in enumerate(matches_to_show[:8], 1):
+            icon = "📁" if m.get("is_dir") else "📄"
+            parent_str = f" (nằm trong {m['parent_name']})" if m.get("parent_name") else ""
+            lines.append(f"{i}. {icon} {m['name']}{parent_str}\n    🔗 {m.get('url', 'Đang đồng bộ...')}")
+        if len(matches_to_show) == 1 and matches_to_show[0].get("parent_url"):
+            lines.append(f"\n📂 Link trực tiếp vào mục Được chia sẻ:\n{matches_to_show[0]['parent_url']}")
+        return {"handled": True, "reply": "\n".join(lines)}
 
     if in_gdrive:
         if not gd_matches:
@@ -1185,7 +1257,7 @@ def _smart_search_reply(raw_query: str) -> dict:
                     lines.append(f"• {'📁' if r['is_dir'] else '📄'} {r['name']} ({r['path']})")
                 lines.append(f"\n👉 Bạn có thể nhắn: \"Up {local_results[0]['name']} lên drive\" để tải lên!")
                 return {"handled": True, "reply": "\n".join(lines)}
-            return {"handled": True, "reply": f"🔍 Không tìm thấy mục nào khớp với '{shown_q}' trên Google Drive của bạn."}
+            return {"handled": True, "reply": f"🔍 Không tìm thấy mục nào khớp với '{shown_q}' trên Google Drive của bạn (kể cả mục Được chia sẻ với tôi)."}
 
         lines = [f"☁️ KẾT QUẢ TÌM TRÊN GOOGLE DRIVE cho '{shown_q}':\n"]
         for i, m in enumerate(gd_matches[:8], 1):
@@ -1203,7 +1275,7 @@ def _smart_search_reply(raw_query: str) -> dict:
     matches = []
 
     if gd_matches:
-        lines.append("☁️ TRÊN GOOGLE DRIVE:")
+        lines.append("☁️ TRÊN GOOGLE DRIVE (bao gồm cả 'Được chia sẻ với tôi'):")
         for m in gd_matches[:5]:
             icon = "📁" if m.get("is_dir") else "📄"
             parent_str = f" ({m['parent_name']})" if m.get("parent_name") else ""
@@ -1240,12 +1312,15 @@ def _execute_get_gdrive_link(raw_query: str) -> dict:
     if not item_name:
         return {"handled": True, "reply": "ℹ️ Bạn muốn lấy link của file hay thư mục nào trên Google Drive?"}
 
-    matches = query_gdrive_items(item_name, parent_hint=parent_hint)
+    is_shared_hint = bool(
+        parent_hint and any(kw in strip_accents(parent_hint) for kw in ("duoc chia se", "chia se", "shared", "tho gui", "khach gui"))
+    )
+    matches = query_gdrive_items(item_name, parent_hint=parent_hint, prefer_shared=is_shared_hint)
     if not matches:
         return {
             "handled": True,
             "reply": (
-                f"🔍 Không tìm thấy file/thư mục '{item_name}' trên Google Drive của bạn.\n"
+                f"🔍 Không tìm thấy file/thư mục '{item_name}' trên Google Drive của bạn (kể cả mục Được chia sẻ với tôi).\n"
                 f"💡 Bạn có thể nhắn: \"Up file {item_name} lên drive\" để tải lên thư mục {DEFAULT_GDRIVE_SUBFOLDER} và nhận link ngay!"
             ),
         }
@@ -1253,9 +1328,10 @@ def _execute_get_gdrive_link(raw_query: str) -> dict:
     lines = [f"🔗 LINK GOOGLE DRIVE ĐỂ GỬI KHÁCH:\n"]
     for m in matches[:5]:
         icon = "📁 Thư mục" if m["is_dir"] else "📄 File"
+        shared_tag = " [Được chia sẻ với tôi]" if m.get("is_shared") else ""
         if m.get("is_synced") and m.get("url"):
             lines.append(
-                f"• {icon}: {m['name']} ({m['size']})\n"
+                f"• {icon}: {m['name']} ({m['size']}){shared_tag}\n"
                 f"  Nằm trong: {m['parent_name']}\n"
                 f"  👉 Link gửi khách:\n  {m['url']}\n"
             )
@@ -1263,9 +1339,11 @@ def _execute_get_gdrive_link(raw_query: str) -> dict:
                 lines.append(f"📂 Link cả thư mục {m['parent_name']}:\n{m['parent_url']}\n")
         else:
             lines.append(
-                f"• {icon}: {m['name']} ({m['size']})\n"
+                f"• {icon}: {m['name']} ({m['size']}){shared_tag}\n"
                 f"  ⏳ Đang được Google Drive tải lên mây, vui lòng thử lấy link lại sau ít phút.\n"
             )
+
+    return {"handled": True, "reply": "\n".join(lines)}
 
     return {"handled": True, "reply": "\n".join(lines)}
 

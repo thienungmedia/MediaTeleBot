@@ -16,7 +16,7 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).parent.resolve()
 CONFIG_PATH = BASE_DIR / "config.json"
-CURRENT_VERSION = "1.0.0"
+CURRENT_VERSION = "1.0.1"
 
 DEFAULT_MANIFEST_URL = "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/version.json"
 

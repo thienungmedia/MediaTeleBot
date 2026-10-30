@@ -171,10 +171,11 @@ def format_gdrive_url(cloud_id: str, is_folder: bool) -> str:
     return f"https://drive.google.com/file/d/{cloud_id}/view?usp=sharing"
 
 
-def query_gdrive_items(item_query: str, parent_hint: str | None = None) -> list[dict]:
+def query_gdrive_items(item_query: str, parent_hint: str | None = None, prefer_shared: bool = False) -> list[dict]:
     """
     Search Google DriveFS local metadata DB for files/folders matching item_query.
-    Returns list of dicts with cloud_id, title, is_folder, parent_title, parent_id, url, parent_url, is_synced.
+    Supports both user's own Drive and 'Shared with me' ('Được chia sẻ với tôi') items.
+    Returns list of dicts with cloud_id, title, is_folder, parent_title, parent_id, url, parent_url, is_synced, is_shared.
     """
     dbs = get_drivefs_db_paths()
     if not dbs:
@@ -183,12 +184,18 @@ def query_gdrive_items(item_query: str, parent_hint: str | None = None) -> list[
     q_norm = strip_accents(item_query.strip())
     q_stem_norm = strip_accents(Path(item_query.strip()).stem)
     q_tokens = [w for w in re.split(r"[^a-z0-9]+", q_norm) if w]
+    q_compact = "".join(re.findall(r"[a-z0-9]+", q_norm))
     p_norm = strip_accents(parent_hint.strip()) if parent_hint else None
+
+    is_shared_parent_hint = bool(
+        p_norm and any(kw in p_norm for kw in ("duoc chia se", "chia se", "shared", "tho gui", "khach gui"))
+    )
 
     sql = """
     SELECT i.stable_id, i.id, s.cloud_id, i.local_title, i.is_folder, i.file_size,
            p.local_title AS parent_title, p.id AS parent_id,
-           EXISTS(SELECT 1 FROM local_stable_ids l WHERE l.stable_id = i.stable_id) AS is_local_only
+           EXISTS(SELECT 1 FROM local_stable_ids l WHERE l.stable_id = i.stable_id) AS is_local_only,
+           i.is_owner, i.shared_with_me_date
     FROM items i
     LEFT JOIN stable_ids s ON i.stable_id = s.stable_id
     LEFT JOIN stable_parents sp ON i.stable_id = sp.item_stable_id
@@ -211,30 +218,54 @@ def query_gdrive_items(item_query: str, parent_hint: str | None = None) -> list[
             continue
 
         for row in rows:
-            stable_id, item_id, cloud_id, title, is_folder, file_size, parent_title, parent_id, is_local_only = row
+            stable_id, item_id, cloud_id, title, is_folder, file_size, parent_title, parent_id, is_local_only, is_owner, shared_date = row
             effective_id = cloud_id or item_id
             if not effective_id or effective_id in seen_ids:
                 continue
 
             title_norm = strip_accents(title)
             stem_norm = strip_accents(Path(title).stem)
+            title_compact = "".join(re.findall(r"[a-z0-9]+", title_norm))
+            title_tokens = [w for w in re.split(r"[^a-z0-9]+", title_norm) if w]
             parent_title_norm = strip_accents(parent_title or "")
 
+            is_shared = (is_owner == 0) or (shared_date is not None and int(shared_date or 0) > 0)
+            if is_shared and (not parent_title or parent_title_norm in ("root", "drive cua toi", "my drive", "none", "")):
+                display_parent = "Được chia sẻ với tôi"
+            else:
+                display_parent = parent_title or ("Được chia sẻ với tôi" if is_shared else "Drive của tôi")
+
             # Check if title matches query
-            is_exact = (title_norm == q_norm) or (not is_folder and stem_norm == q_norm) or (not is_folder and stem_norm == q_stem_norm)
-            is_partial = (q_norm in title_norm) or (
-                bool(q_tokens) and all(any(qt in tt for tt in re.split(r"[^a-z0-9]+", title_norm) if tt) for qt in q_tokens)
+            is_exact = (
+                (title_norm == q_norm)
+                or (not is_folder and stem_norm == q_norm)
+                or (not is_folder and stem_norm == q_stem_norm)
+                or (bool(q_compact) and q_compact == title_compact)
             )
+
+            is_partial = False
+            if not is_exact:
+                if (q_norm in title_norm) or (bool(q_compact) and q_compact in title_compact):
+                    is_partial = True
+                elif bool(q_tokens) and all(
+                    (any(qt in tt for tt in title_tokens) or (qt in title_compact)) for qt in q_tokens
+                ):
+                    is_partial = True
 
             if not (is_exact or is_partial):
                 continue
 
             # Check parent hint if provided
             in_target_parent = False
-            if p_norm:
+            if is_shared_parent_hint:
+                in_target_parent = is_shared
+            elif p_norm:
                 in_target_parent = (p_norm == parent_title_norm) or (p_norm in parent_title_norm)
             else:
-                in_target_parent = (strip_accents(DEFAULT_GDRIVE_SUBFOLDER) in parent_title_norm)
+                if prefer_shared:
+                    in_target_parent = is_shared
+                else:
+                    in_target_parent = (strip_accents(DEFAULT_GDRIVE_SUBFOLDER) in parent_title_norm)
 
             is_synced = (not is_local_only) and (not str(effective_id).startswith("local_"))
             item_info = {
@@ -243,11 +274,16 @@ def query_gdrive_items(item_query: str, parent_hint: str | None = None) -> list[
                 "name": title,
                 "is_dir": bool(is_folder),
                 "size": "-" if is_folder or file_size is None else format_size(int(file_size)),
-                "parent_name": parent_title or "Drive của tôi",
+                "parent_name": display_parent,
                 "parent_id": parent_id,
                 "url": format_gdrive_url(effective_id, bool(is_folder)) if is_synced else None,
-                "parent_url": format_gdrive_url(parent_id, True) if parent_id and not str(parent_id).startswith("local_") else None,
+                "parent_url": (
+                    "https://drive.google.com/drive/shared-with-me"
+                    if display_parent == "Được chia sẻ với tôi"
+                    else (format_gdrive_url(parent_id, True) if parent_id and not str(parent_id).startswith("local_") else None)
+                ),
                 "is_synced": is_synced,
+                "is_shared": is_shared,
             }
 
             if p_norm and not in_target_parent:

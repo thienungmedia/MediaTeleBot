@@ -1,6 +1,6 @@
 {
-  "version": "1.0.0",
-  "release_notes": "• Bản phát hành chính thức đầu tiên của MediaTeleBot.\n• Quản lý file Mac từ xa, tìm kiếm ổ cứng ngoài, upload Google Drive, tự động gửi Zalo.",
+  "version": "1.0.1",
+  "release_notes": "• Hỗ trợ tự động tìm file/thư mục trong mục 'Được chia sẻ với tôi' (Shared with me) trên Google Drive.\n• Nhận diện thông minh khi tìm file thợ gửi, khách gửi hoặc từ viết liền/rời (ví dụ: 'flycam ofi' <-> 'Fly Cam Ofi').\n• Kèm link trực tiếp tới thư mục Được chia sẻ với tôi trên trình duyệt web.",
   "files": {
     "bot.py": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/bot.py",
     "safe_fs.py": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/safe_fs.py",
