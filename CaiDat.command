@@ -84,24 +84,23 @@ GEMINI_KEY="${INPUT_KEY:-$EXISTING_KEY}"
 echo ""
 echo "------------------------------------------------------------------"
 echo "☁️ BƯỚC 3: THƯ MỤC GOOGLE DRIVE MẶC ĐỊNH ĐỂ TỰ ĐỘNG UPLOAD"
+echo "(Dán LINK thư mục Google Drive HOẶC gõ TÊN thư mục)"
+echo "• Hỗ trợ cả thư mục được chia sẻ quyền chỉnh sửa từ chủ nhân/thợ!"
+echo "• Bấm Enter để dùng mặc định: $EXISTING_FOLDER"
 echo "------------------------------------------------------------------"
-read -p "Tên thư mục trên Drive [Mặc định: $EXISTING_FOLDER]: " INPUT_FOLDER
+read -p "Dán Link hoặc Nhập Tên thư mục [Mặc định: $EXISTING_FOLDER]: " INPUT_FOLDER
 GDRIVE_FOLDER="${INPUT_FOLDER:-$EXISTING_FOLDER}"
 
 # Tạo config.json
 "$PYTHON_PATH" -c "
-import json
-cfg = {}
-try:
-    with open('config.json', 'r', encoding='utf-8') as f:
-        cfg = json.load(f)
-except Exception:
-    pass
+import json, sys
+sys.path.append('.')
+import safe_fs
 
+cfg = safe_fs._read_json(safe_fs.CONFIG_PATH)
 cfg['bot_token'] = '''$BOT_TOKEN'''.strip()
 cfg['gemini_api_key'] = '''$GEMINI_KEY'''.strip()
 cfg['gemini_model'] = 'gemini-3.1-flash-lite'
-cfg['default_gdrive_folder'] = '''$GDRIVE_FOLDER'''.strip()
 if 'owner_id' not in cfg:
     cfg['owner_id'] = None
 if 'chat_id' not in cfg:
@@ -109,8 +108,13 @@ if 'chat_id' not in cfg:
 if 'last_update_id' not in cfg:
     cfg['last_update_id'] = 0
 
-with open('config.json', 'w', encoding='utf-8') as f:
-    json.dump(cfg, f, indent=2, ensure_ascii=False)
+safe_fs._write_json(safe_fs.CONFIG_PATH, cfg)
+
+# Cập nhật thư mục upload Google Drive qua hàm phân giải link/tên
+res = safe_fs.set_default_gdrive_folder('''$GDRIVE_FOLDER''')
+print('📁 Thư mục upload mặc định: ' + str(res.get('folder_name', '''$GDRIVE_FOLDER''')))
+if res.get('folder_url'):
+    print('🔗 Link Google Drive: ' + str(res['folder_url']))
 "
 
 chmod 600 config.json

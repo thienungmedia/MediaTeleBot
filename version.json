@@ -1,6 +1,6 @@
 {
-  "version": "1.0.1",
-  "release_notes": "• Hỗ trợ tự động tìm file/thư mục trong mục 'Được chia sẻ với tôi' (Shared with me) trên Google Drive.\n• Nhận diện thông minh khi tìm file thợ gửi, khách gửi hoặc từ viết liền/rời (ví dụ: 'flycam ofi' <-> 'Fly Cam Ofi').\n• Kèm link trực tiếp tới thư mục Được chia sẻ với tôi trên trình duyệt web.",
+  "version": "1.0.2",
+  "release_notes": "• Hỗ trợ dán trực tiếp LINK thư mục Google Drive (kể cả thư mục được chia sẻ quyền chỉnh sửa) làm nơi upload mặc định.\n• Lệnh /setfolder, /getfolder hoặc đổi bằng câu nói tự nhiên: 'đổi thư mục mặc định thành <link/tên>'.\n• Thêm công cụ 1-click DoiThuMucDrive.command tiện lợi.",
   "files": {
     "bot.py": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/bot.py",
     "safe_fs.py": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/safe_fs.py",
@@ -8,6 +8,8 @@
     "llm_intent.py": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/llm_intent.py",
     "zalo_sender.py": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/zalo_sender.py",
     "updater.py": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/updater.py",
+    "CaiDat.command": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/CaiDat.command",
+    "DoiThuMucDrive.command": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/DoiThuMucDrive.command",
     "README.md": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/README.md"
   }
 }

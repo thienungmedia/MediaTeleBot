@@ -173,18 +173,30 @@ Bạn có thể nhắn tin cho Bot bằng tiếng Việt tự nhiên bất cứ 
 * `up thư mục 2810 lên google drive cho tôi`  
 *(Bot sẽ tự động tải lên thư mục mặc định đã cài đặt, sau khi Drive đồng bộ xong sẽ tự động gửi link chia sẻ về Telegram cho bạn!)*
 
-### 🔗 4. Lấy link Google Drive có sẵn
+### 📁 4. Cài đặt & Đổi thư mục upload mặc định (Hỗ trợ DÁN LINK Drive)
+* **Dán trực tiếp link Google Drive:**
+  * `/setfolder https://drive.google.com/drive/folders/1xRaK_aEWV1D6H3YhalfzQ...`
+  * *(Hỗ trợ cả link thư mục được chia sẻ quyền chỉnh sửa từ chủ dự án/thợ)*.
+* **Hoặc nhập tên thư mục:**
+  * `/setfolder THIEN UNG PRODUCTION`
+  * Hoặc nhắn tự nhiên: *"đổi thư mục mặc định thành Fly Cam Ofi"*
+* **Xem thư mục đang cài đặt:**
+  * `/getfolder` hoặc nhắn: *"thư mục mặc định hiện tại là gì"*
+* **Hoặc bấm đúp chuột** vào file `DoiThuMucDrive.command` trong thư mục trợ lý để xem/đổi nhanh chỉ với 1 click!
+
+### 🔗 5. Lấy link Google Drive có sẵn
 * `lấy link 2510 huynh trung hiep`
 * `xin link thư mục 2810`
+* `lấy link flycam ofi` *(tự động tìm cả trong mục "Được chia sẻ với tôi")*
 
-### 💬 5. Gửi link Drive qua Zalo
+### 💬 6. Gửi link Drive qua Zalo
 * `gửi link 2510 huynh trung hiep qua cho Hoàng Dựng`
 * `gửi link 2810 cho Hoàng Dựng qua zalo`
 * `chia sẻ link 2510 huynh trung hiep qua cho anh Thăng`
 * `up file test.mp4 lên drive rồi gửi cho chị Hà qua zalo`  
 *(Bot sẽ soạn sẵn tin nhắn, hiện bản xem trước kèm nút bấm `[✅ Gửi Zalo cho ...]`. Bạn chỉ cần bấm nút xác nhận trên Telegram là máy Mac sẽ tự động gửi!)*
 
-### 📂 6. Copy / Dời file trên máy Mac
+### 📂 7. Copy / Dời file trên máy Mac
 * `copy thư mục 2510 trong film data ra source ngoài desktop`
 * `chuyển clip ofi qua film data`
 

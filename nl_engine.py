@@ -15,6 +15,9 @@ from pathlib import Path
 import safe_fs
 from safe_fs import (
     DEFAULT_GDRIVE_SUBFOLDER,
+    get_default_gdrive_subfolder,
+    get_default_gdrive_folder_info,
+    set_default_gdrive_folder,
     strip_accents,
     list_drives,
     list_directory,
@@ -611,10 +614,11 @@ def parse_and_execute_nl(text: str, chat_id: int = 0, _from_llm: bool = False) -
             res = safe_copy(chosen_item["path"], dst_path) if is_copy else safe_move(chosen_item["path"], dst_path)
             if res.get("ok"):
                 if is_gdrive:
+                    dst_folder_name = Path(res["dst"]).parent.name if Path(res["dst"]).is_file() else Path(res["dst"]).name
                     return {
                         "handled": True,
                         "reply": (
-                            f"☁️ ĐÃ UPLOAD LÊN GOOGLE DRIVE (THIEN UNG PRODUCTION)!\n"
+                            f"☁️ ĐÃ UPLOAD LÊN GOOGLE DRIVE ({dst_folder_name})!\n"
                             f"• File/Thư mục: {chosen_item['name']} ({sz_str})\n"
                             f"• Nguồn: {res['src']}\n"
                             f"• Đích Google Drive: {res['dst']}\n"
@@ -656,6 +660,111 @@ def parse_and_execute_nl(text: str, chat_id: int = 0, _from_llm: bool = False) -
             return {"handled": True, "reply": f"⚠️ Không thể kiểm tra máy chủ cập nhật: {res['error']}"}
         else:
             return {"handled": True, "reply": f"✅ Bạn đang sử dụng phiên bản mới nhất (v{updater.CURRENT_VERSION})!"}
+
+    # 0.2 View or Set Default Google Drive Upload Folder:
+    # Commands: /setfolder, /thumuc, /folder, /getfolder
+    # NL: "đặt thư mục mặc định là...", "thư mục upload là...", "thư mục mặc định hiện tại là gì"
+    setfolder_cmd = re.match(r"^/(?:setfolder|thumuc|folder|set_upload_folder)(?:\s+(.+))?$", t, flags=re.IGNORECASE)
+    getfolder_cmd = re.match(r"^/(?:getfolder|thumuchientai|currentfolder)$", t, flags=re.IGNORECASE)
+
+    nl_get_folder = bool(re.search(
+        r"^(?:xem\s+|kiểm\s+tra\s+)?(?:thư\s+mục|folder)\s+(?:mặc\s+định|upload|drive\s+mặc\s+định|drive|up\s+drive)(?:\s+(?:hiện\s+tại|là\s+gì|\?))*(?:\s+là\s+gì\??)?$",
+        t,
+        flags=re.IGNORECASE,
+    ) or t_norm in ("thu muc mac dinh", "thu muc upload", "thu muc drive mac dinh", "xem thu muc mac dinh", "thu muc mac dinh la gi"))
+
+    nl_set_folder = re.search(
+        r"^(?:đặt|cài|chọn|thay\s+đổi|đổi)\s+(?:lại\s+)?(?:thư\s+mục|folder)\s+(?:mặc\s+định|upload|drive|up\s+drive)?\s*(?:là|thành|sang)?\s*(.+)$",
+        t,
+        flags=re.IGNORECASE,
+    )
+    if not nl_set_folder and not nl_get_folder:
+        nl_set_folder = re.search(
+            r"^(?:thư\s+mục|folder)\s+(?:mặc\s+định|upload|drive)\s+(?:là|thành|sang)\s*(.+)$",
+            t,
+            flags=re.IGNORECASE,
+        )
+
+    if setfolder_cmd:
+        arg = (setfolder_cmd.group(1) or "").strip()
+        if arg:
+            res = set_default_gdrive_folder(arg)
+            shared_str = " (Được chia sẻ với tôi)" if res.get("is_shared") else ""
+            lines = [
+                f"✅ ĐÃ ĐẶT THƯ MỤC UPLOAD MẶC ĐỊNH THÀNH CÔNG!\n",
+                f"📁 Tên thư mục: {res['folder_name']}{shared_str}",
+            ]
+            if res.get("folder_url"):
+                lines.append(f"🔗 Link Google Drive:\n{res['folder_url']}")
+            if res.get("local_path"):
+                lines.append(f"📂 Vị trí trên máy Mac:\n`{res['local_path']}`")
+            lines.append(
+                f"\n💡 Từ bây giờ, khi bạn nhắn: \"Up file X lên drive\", bot sẽ tự động tải thẳng vào thư mục này và lấy link gửi bạn!"
+            )
+            if res.get("is_shared"):
+                lines.append(
+                    f"\n👉 Lưu ý: Nếu đây là thư mục do chủ dự án chia sẻ cho bạn, hãy đảm bảo bạn đã bấm \"Thêm lối tắt vào Drive\" (Add shortcut to Drive) trên Google Drive web để file tự động chạy về Drive của chủ nhân nhé!"
+                )
+            return {"handled": True, "reply": "\n".join(lines)}
+        else:
+            getfolder_cmd = True
+
+    if nl_get_folder or getfolder_cmd:
+        info = get_default_gdrive_folder_info()
+        shared_str = " (Được chia sẻ với tôi)" if info.get("is_shared") else ""
+        lines = [
+            f"📁 THƯ MỤC UPLOAD MẶC ĐỊNH HIỆN TẠI:\n",
+            f"• Tên thư mục: {info['folder_name']}{shared_str}",
+        ]
+        if info.get("folder_url"):
+            lines.append(f"• Link Google Drive:\n  {info['folder_url']}")
+        if info.get("local_path"):
+            lines.append(f"• Vị trí trên máy Mac:\n  `{info['local_path']}`")
+        lines.append(
+            f"\n👉 Để đổi thư mục khác, bạn có thể:\n"
+            f"• Nhắn: `/setfolder <dán link hoặc gõ tên thư mục>`\n"
+            f"• Hoặc nhắn: \"đổi thư mục mặc định thành <link hoặc tên>\""
+        )
+        return {"handled": True, "reply": "\n".join(lines)}
+
+    if nl_set_folder and not re.search(r"^(?:up|upload|tải|chuyển|copy|xem|kiểm\s+tra)\b", t_lower):
+        arg = nl_set_folder.group(1).strip()
+        if re.search(r"^(?:gì|gì\s*\?|nào|nao|sao|đâu|dau)$", arg, flags=re.IGNORECASE):
+            info = get_default_gdrive_folder_info()
+            shared_str = " (Được chia sẻ với tôi)" if info.get("is_shared") else ""
+            lines = [
+                f"📁 THƯ MỤC UPLOAD MẶC ĐỊNH HIỆN TẠI:\n",
+                f"• Tên thư mục: {info['folder_name']}{shared_str}",
+            ]
+            if info.get("folder_url"):
+                lines.append(f"• Link Google Drive:\n  {info['folder_url']}")
+            if info.get("local_path"):
+                lines.append(f"• Vị trí trên máy Mac:\n  `{info['local_path']}`")
+            lines.append(
+                f"\n👉 Để đổi thư mục khác, bạn có thể:\n"
+                f"• Nhắn: `/setfolder <dán link hoặc gõ tên thư mục>`\n"
+                f"• Hoặc nhắn: \"đổi thư mục mặc định thành <link hoặc tên>\""
+            )
+            return {"handled": True, "reply": "\n".join(lines)}
+
+        res = set_default_gdrive_folder(arg)
+        shared_str = " (Được chia sẻ với tôi)" if res.get("is_shared") else ""
+        lines = [
+            f"✅ ĐÃ ĐẶT THƯ MỤC UPLOAD MẶC ĐỊNH THÀNH CÔNG!\n",
+            f"📁 Tên thư mục: {res['folder_name']}{shared_str}",
+        ]
+        if res.get("folder_url"):
+            lines.append(f"🔗 Link Google Drive:\n{res['folder_url']}")
+        if res.get("local_path"):
+            lines.append(f"📂 Vị trí trên máy Mac:\n`{res['local_path']}`")
+        lines.append(
+            f"\n💡 Từ bây giờ, khi bạn nhắn: \"Up file X lên drive\", bot sẽ tự động tải thẳng vào thư mục này và lấy link gửi bạn!"
+        )
+        if res.get("is_shared"):
+            lines.append(
+                f"\n👉 Lưu ý: Nếu đây là thư mục do chủ dự án chia sẻ cho bạn, hãy đảm bảo bạn đã bấm \"Thêm lối tắt vào Drive\" (Add shortcut to Drive) trên Google Drive web để file tự động chạy về Drive của chủ nhân nhé!"
+            )
+        return {"handled": True, "reply": "\n".join(lines)}
 
     # 0.4 Xem lịch: "ngày 25.10 tôi có bao nhiêu lịch", "hôm nay có lịch gì", "tuần này có lịch gì"
     q_res = _try_calendar_query(t)
@@ -744,9 +853,9 @@ def parse_and_execute_nl(text: str, chat_id: int = 0, _from_llm: bool = False) -
     if gdrive_match:
         raw_target = gdrive_match.group(1)
         raw_subfolder = gdrive_match.group(2) or ""
-        subfolder = clean_polite_phrases(raw_subfolder) if raw_subfolder else DEFAULT_GDRIVE_SUBFOLDER
+        subfolder = clean_polite_phrases(raw_subfolder) if raw_subfolder else get_default_gdrive_subfolder()
         if not subfolder:
-            subfolder = DEFAULT_GDRIVE_SUBFOLDER
+            subfolder = get_default_gdrive_subfolder()
         LAST_CONTEXT[chat_id] = {"action": "gdrive", "subfolder": subfolder}
         return _prepare_gdrive_confirmation(raw_target, subfolder, chat_id)
 
@@ -778,7 +887,7 @@ def parse_and_execute_nl(text: str, chat_id: int = 0, _from_llm: bool = False) -
         if ctx.get("action") == "move_copy":
             return _prepare_move_copy_confirmation(t, ctx["raw_dst"], ctx["is_copy"], chat_id)
         elif ctx.get("action") == "gdrive":
-            return _prepare_gdrive_confirmation(t, ctx.get("subfolder", DEFAULT_GDRIVE_SUBFOLDER), chat_id)
+            return _prepare_gdrive_confirmation(t, ctx.get("subfolder", get_default_gdrive_subfolder()), chat_id)
 
     # 7. Browse / View folder
     browse_match = re.search(
@@ -1317,11 +1426,12 @@ def _execute_get_gdrive_link(raw_query: str) -> dict:
     )
     matches = query_gdrive_items(item_name, parent_hint=parent_hint, prefer_shared=is_shared_hint)
     if not matches:
+        def_folder = get_default_gdrive_subfolder()
         return {
             "handled": True,
             "reply": (
                 f"🔍 Không tìm thấy file/thư mục '{item_name}' trên Google Drive của bạn (kể cả mục Được chia sẻ với tôi).\n"
-                f"💡 Bạn có thể nhắn: \"Up file {item_name} lên drive\" để tải lên thư mục {DEFAULT_GDRIVE_SUBFOLDER} và nhận link ngay!"
+                f"💡 Bạn có thể nhắn: \"Up file {item_name} lên drive\" để tải lên thư mục {def_folder} và nhận link ngay!"
             ),
         }
 
@@ -1356,7 +1466,7 @@ def _prepare_gdrive_confirmation(raw_target: str, subfolder: str, chat_id: int) 
             "reply": "❌ Chưa tìm thấy thư mục Google Drive trên máy Mac. Bạn hãy mở ứng dụng Google Drive.app trước nhé!",
         }
 
-    effective_subfolder = subfolder.strip() if subfolder and subfolder.strip() else DEFAULT_GDRIVE_SUBFOLDER
+    effective_subfolder = subfolder.strip() if subfolder and subfolder.strip() else get_default_gdrive_subfolder()
     dst_dir = resolve_subfolder_fuzzy(gdrive_root, effective_subfolder)
     try:
         dst_dir.mkdir(parents=True, exist_ok=True)

@@ -42,9 +42,169 @@ def _write_json(path: Path, data: dict) -> None:
     path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
 
 
+def extract_gdrive_id_from_url(url_or_text: str) -> str | None:
+    """Extract Google Drive folder/file cloud ID from a URL or raw ID."""
+    raw = url_or_text.strip().strip("\"'<>")
+    match = re.search(r"drive\.google\.com/(?:drive/(?:u/\d+/)?folders/|file/d/|open\?id=)([a-zA-Z0-9_-]+)", raw)
+    if match:
+        return match.group(1)
+    if re.match(r"^[a-zA-Z0-9_-]{25,}$", raw):
+        return raw
+    return None
+
+
+def lookup_gdrive_folder_by_id(cloud_id: str) -> dict | None:
+    """Look up folder metadata in local Google DriveFS SQLite DB by cloud_id."""
+    dbs = get_drivefs_db_paths()
+    for db in dbs:
+        try:
+            conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=5)
+            row = conn.execute("""
+                SELECT i.local_title, i.is_folder, i.is_owner, i.shared_with_me_date, s.cloud_id
+                FROM items i
+                LEFT JOIN stable_ids s ON i.stable_id = s.stable_id
+                WHERE (s.cloud_id = ? OR i.id = ?) AND i.trashed = 0 AND i.is_tombstone = 0
+            """, (cloud_id, cloud_id)).fetchone()
+            conn.close()
+            if row:
+                title, is_folder, is_owner, shared_date, cid = row
+                is_shared = (is_owner == 0) or (shared_date is not None and int(shared_date or 0) > 0)
+                effective_id = cid or cloud_id
+                return {
+                    "title": title,
+                    "is_folder": bool(is_folder),
+                    "is_shared": is_shared,
+                    "cloud_id": effective_id,
+                    "url": f"https://drive.google.com/drive/folders/{effective_id}?usp=sharing",
+                }
+        except Exception:
+            continue
+    return None
+
+
+def fetch_gdrive_title_from_web(cloud_id: str) -> str | None:
+    """Fallback: Fetch folder title from public web metadata if DriveFS DB hasn't indexed it yet."""
+    url = f"https://drive.google.com/drive/folders/{cloud_id}"
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    try:
+        with urllib.request.urlopen(req, timeout=4) as resp:
+            html = resp.read().decode("utf-8", errors="ignore")
+            m = re.search(r'<meta property="og:title" content="([^"]+)"', html)
+            if m:
+                return m.group(1).replace(" - Google Drive", "").strip()
+            t = re.search(r"<title>([^<]+)</title>", html)
+            if t:
+                return t.group(1).replace(" - Google Drive", "").strip()
+    except Exception:
+        pass
+    return None
+
+
+def resolve_target_gdrive_folder(raw_input: str) -> dict:
+    """
+    Resolve user input (URL or folder name) to title, cloud_id, url, and is_shared status.
+    """
+    inp = raw_input.strip().strip("\"'<>")
+    cid = extract_gdrive_id_from_url(inp)
+
+    if cid:
+        info = lookup_gdrive_folder_by_id(cid)
+        if not info:
+            web_title = fetch_gdrive_title_from_web(cid)
+            info = {
+                "title": web_title or f"Folder_{cid[:8]}",
+                "is_folder": True,
+                "is_shared": True,
+                "cloud_id": cid,
+                "url": f"https://drive.google.com/drive/folders/{cid}?usp=sharing",
+            }
+        return info
+    else:
+        matches = query_gdrive_items(inp)
+        folder_matches = [m for m in matches if m.get("is_dir")]
+        if folder_matches:
+            best = folder_matches[0]
+            return {
+                "title": best["name"],
+                "is_folder": True,
+                "is_shared": best.get("is_shared", False),
+                "cloud_id": best.get("cloud_id"),
+                "url": best.get("url"),
+            }
+        return {
+            "title": inp,
+            "is_folder": True,
+            "is_shared": False,
+            "cloud_id": None,
+            "url": None,
+        }
+
+
 def get_default_gdrive_subfolder() -> str:
     cfg = _read_json(CONFIG_PATH)
     return cfg.get("default_gdrive_folder") or "THIEN UNG PRODUCTION"
+
+
+def get_default_gdrive_folder_info() -> dict:
+    cfg = _read_json(CONFIG_PATH)
+    folder_name = cfg.get("default_gdrive_folder") or "THIEN UNG PRODUCTION"
+    folder_id = cfg.get("default_gdrive_folder_id")
+    folder_url = cfg.get("default_gdrive_folder_url")
+    is_shared = cfg.get("default_gdrive_is_shared", False)
+    gdrive_root = find_google_drive_root(auto_launch=False)
+    local_path = None
+    if gdrive_root:
+        local_path = resolve_subfolder_fuzzy(gdrive_root, folder_name)
+    return {
+        "folder_name": folder_name,
+        "folder_id": folder_id,
+        "folder_url": folder_url,
+        "is_shared": is_shared,
+        "local_path": str(local_path) if local_path else None,
+        "exists_locally": bool(local_path and local_path.exists()),
+    }
+
+
+def set_default_gdrive_folder(raw_input: str) -> dict:
+    """
+    Set default Google Drive upload folder from a URL or name,
+    save to config.json and create/verify local folder on Mac.
+    """
+    info = resolve_target_gdrive_folder(raw_input)
+    folder_name = info["title"]
+    cloud_id = info.get("cloud_id")
+    folder_url = info.get("url")
+    is_shared = info.get("is_shared", False)
+
+    cfg = _read_json(CONFIG_PATH)
+    cfg["default_gdrive_folder"] = folder_name
+    if cloud_id:
+        cfg["default_gdrive_folder_id"] = cloud_id
+    if folder_url:
+        cfg["default_gdrive_folder_url"] = folder_url
+    cfg["default_gdrive_is_shared"] = is_shared
+    _write_json(CONFIG_PATH, cfg)
+
+    global DEFAULT_GDRIVE_SUBFOLDER
+    DEFAULT_GDRIVE_SUBFOLDER = folder_name
+
+    gdrive_root = find_google_drive_root(auto_launch=True)
+    local_path = None
+    if gdrive_root:
+        local_path = resolve_subfolder_fuzzy(gdrive_root, folder_name)
+        try:
+            local_path.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            pass
+
+    return {
+        "ok": True,
+        "folder_name": folder_name,
+        "cloud_id": cloud_id,
+        "folder_url": folder_url,
+        "is_shared": is_shared,
+        "local_path": str(local_path) if local_path else None,
+    }
 
 
 DEFAULT_GDRIVE_SUBFOLDER = get_default_gdrive_subfolder()
@@ -647,6 +807,10 @@ def find_google_drive_root(auto_launch: bool = True) -> Path | None:
             try:
                 candidate = Path.home() / direct_name
                 if candidate.exists() and candidate.is_dir():
+                    for sub in ("My Drive", "Bộ nhớ của tôi", "Drive của tôi", "Drive của tôi"):
+                        sub_candidate = candidate / sub
+                        if sub_candidate.exists():
+                            return sub_candidate
                     return candidate
             except OSError:
                 pass
