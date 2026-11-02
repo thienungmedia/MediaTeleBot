@@ -586,12 +586,20 @@ def parse_and_execute_nl(text: str, chat_id: int = 0, _from_llm: bool = False) -
     t_lower = t.lower()
     t_norm = strip_accents(t)
 
-    # 0. Check if user is replying to a pending confirmation ("ok", "đúng rồi", "xác nhận", "1", "2", "huỷ")
+    # 0. Check if user is replying to a pending confirmation ("ok", "đúng rồi", "xác nhận", "1", "2", "huỷ", "huỷ up 3110"...)
     if chat_id in PENDING_CONFIRM:
         pending = PENDING_CONFIRM[chat_id]
-        if t_norm in ("huy", "huy bo", "khong", "thoi", "cancel"):
+        if (
+            t_norm in ("huy", "huy bo", "khong", "thoi", "cancel", "dung lai", "stop")
+            or t_norm.startswith(("huy ", "huy bo ", "cancel ", "dung ", "thoi "))
+            or "huy up" in t_norm
+            or "khong up" in t_norm
+            or "dung up" in t_norm
+            or "thoi khong" in t_norm
+            or "khong can" in t_norm
+        ):
             PENDING_CONFIRM.pop(chat_id, None)
-            return {"handled": True, "reply": "✅ Đã huỷ thao tác."}
+            return {"handled": True, "reply": "✅ Đã huỷ thao tác theo yêu cầu của bạn."}
 
         candidates = pending.get("candidates", [])
         chosen_item = None
@@ -638,6 +646,19 @@ def parse_and_execute_nl(text: str, chat_id: int = 0, _from_llm: bool = False) -
                 }
             else:
                 return {"handled": True, "reply": f"❌ Lỗi: {res.get('error')}"}
+
+    # Cancel command when nothing is pending (or general cancel phrases)
+    if (
+        t_norm in ("huy", "huy bo", "cancel", "thoi", "dung lai", "stop")
+        or t_norm.startswith(("huy ", "huy bo ", "cancel ", "dung ", "thoi "))
+        or "huy up" in t_norm
+        or "khong up" in t_norm
+    ):
+        PENDING_CONFIRM.pop(chat_id, None)
+        return {
+            "handled": True,
+            "reply": "✅ Đã huỷ (hiện tại không có tiến trình nào đang chờ hoặc đã được huỷ an toàn).",
+        }
 
     # 0.1 Check for updates: "cập nhật", "update", "kiểm tra bản mới", "có bản cập nhật không"
     if t_norm in ("cap nhat", "update", "kiem tra cap nhat", "kiem tra ban moi", "co ban moi khong", "update bot", "cap nhat bot"):
