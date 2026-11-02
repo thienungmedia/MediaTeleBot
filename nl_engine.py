@@ -1080,6 +1080,9 @@ def parse_and_execute_nl(text: str, chat_id: int = 0, _from_llm: bool = False) -
         try:
             import importlib
             import llm_intent
+            saved_hist = dict(getattr(llm_intent, "CHAT_HISTORY", {}))
+            importlib.reload(llm_intent)
+            llm_intent.CHAT_HISTORY.update(saved_hist)
             last_item = LAST_CONTEXT.get(chat_id, {}).get("last_item")
             gem_res = llm_intent.process_with_gemini(
                 t,
