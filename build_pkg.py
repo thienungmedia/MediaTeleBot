@@ -29,7 +29,7 @@ core_files = [
     'bot.py', 'safe_fs.py', 'nl_engine.py', 'lunar_calendar.py', 'llm_intent.py',
     'updater.py', 'version.json', 'install_core.py', 'HuongDanLayMa.html',
     'no_delete_guard.py', 'zalo_sender.py', 'HUONG_DAN_NHANH.txt', 'README.md',
-    'config.example.json'
+    'config.example.json', 'AppIcon.icns'
 ]
 for f in core_files:
     src = f'{scratch_dir}/{f}'
@@ -60,20 +60,10 @@ if [ -f "$CONSOLE_HOME/.gemini/antigravity/scratch/telegram-file-manager/config.
     chmod 600 "$USER_TARGET_DIR/config.json"
 fi
 
-# Chạy kích hoạt tự động nếu đã có cấu hình
-PY_BIN=""
-for p in /Library/Frameworks/Python.framework/Versions/3.14/bin/python3 /Library/Frameworks/Python.framework/Versions/3.13/bin/python3 /Library/Frameworks/Python.framework/Versions/3.12/bin/python3 /Library/Frameworks/Python.framework/Versions/3.11/bin/python3 /opt/homebrew/bin/python3 /usr/local/bin/python3 /usr/bin/python3; do
-    if [ -x "$p" ]; then PY_BIN="$p"; break; fi
-done
-
-if [ -n "$PY_BIN" ] && [ -f "$USER_TARGET_DIR/config.json" ]; then
-    sudo -u "$CONSOLE_USER" "$PY_BIN" "$USER_TARGET_DIR/install_core.py" --setup-service 2>/dev/null || true
-    # Mở MacFileBot Manager thông báo đang chạy
-    sudo -u "$CONSOLE_USER" open "/Applications/MacFileBot Manager.app" 2>/dev/null || true
-else
-    # Mở Cài Đặt MacFileBot để người dùng dán Bot Token
-    sudo -u "$CONSOLE_USER" open "/Applications/Cài Đặt MacFileBot.app" 2>/dev/null || true
-fi
+# Luôn luôn mở Cài Đặt MacFileBot để người dùng dán Token Bot & Gemini API Key
+launchctl asuser "$CONSOLE_UID" sudo -u "$CONSOLE_USER" open "/Applications/Cài Đặt MacFileBot.app" 2>/dev/null || \
+sudo -u "$CONSOLE_USER" open "/Applications/Cài Đặt MacFileBot.app" 2>/dev/null || \
+open "/Applications/Cài Đặt MacFileBot.app" 2>/dev/null || true
 
 exit 0
 '''

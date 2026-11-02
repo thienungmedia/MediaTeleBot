@@ -1,6 +1,6 @@
 {
-  "version": "1.2.0",
-  "release_notes": "• Hỗ trợ Âm Lịch Việt Nam chuẩn thiên văn: Tự động nhận diện và quy đổi ngày âm sang dương lịch để note Google Calendar.\n• Tự động tính đúng trường hợp âm lịch năm nay rơi sang dương lịch năm sau (ví dụ: 25/11 âm Bính Ngọ -> 02/01/2027 dương).\n• Hỗ trợ tra cứu lịch theo ngày âm lịch (ví dụ: '25/11 âm có lịch gì không').\n• Kèm file hướng dẫn lấy Token & Gemini API (HuongDanLayMa.html) và bộ cài App 1-Click native.",
+  "version": "1.2.1",
+  "release_notes": "• Đóng gói bộ cài đặt chuẩn macOS Apple Installer (MacFileBot_Installer.pkg).\n• Logo ứng dụng 3D phong cách Apple mới.\n• Tự động bật giao diện dán Bot Token & Gemini API Key ngay sau khi cài đặt pkg.\n• Sửa lỗi huỷ khi đổi thư mục trong MacFileBot Manager.\n• Tích hợp Lịch Âm thiên văn Việt Nam (tự động đổi ngày dương, xử lý lùi năm).",
   "files": {
     "bot.py": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/bot.py",
     "safe_fs.py": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/safe_fs.py",

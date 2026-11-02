@@ -303,6 +303,16 @@ def uninstall() -> dict:
     return {"ok": True}
 
 
+def set_folder(folder_arg: str) -> dict:
+    """Update default Google Drive folder in config.json."""
+    sys.path.insert(0, str(TARGET_DIR))
+    import safe_fs
+    safe_fs.CONFIG_PATH = TARGET_DIR / "config.json"
+    safe_fs.BASE_DIR = TARGET_DIR
+    res = safe_fs.set_default_gdrive_folder(folder_arg)
+    return res
+
+
 def restart() -> dict:
     uid = os.getuid()
     subprocess.run(["launchctl", "kickstart", "-k", "-p", f"gui/{uid}/{PLIST_NAME}"], capture_output=True)
@@ -412,6 +422,12 @@ if __name__ == "__main__":
         print(json.dumps(restart(), indent=2, ensure_ascii=False))
         sys.exit(0)
 
+    if len(sys.argv) >= 3 and sys.argv[1] == "--set-folder":
+        folder_arg = sys.argv[2]
+        res = set_folder(folder_arg)
+        print(res.get("folder_name", folder_arg))
+        sys.exit(0)
+
     if len(sys.argv) >= 2 and sys.argv[1] == "--setup-service":
         print(json.dumps(setup_service(), indent=2, ensure_ascii=False))
         sys.exit(0)
@@ -424,6 +440,18 @@ if __name__ == "__main__":
         t = sys.argv[2] if len(sys.argv) >= 3 else ""
         print(json.dumps(verify_telegram_token(t), ensure_ascii=False))
         sys.exit(0)
+
+    if len(sys.argv) >= 2 and sys.argv[1] == "--install-simple":
+        tok = sys.argv[2] if len(sys.argv) >= 3 else ""
+        gem = sys.argv[3] if len(sys.argv) >= 4 else ""
+        fol = sys.argv[4] if len(sys.argv) >= 5 else "PRODUCTION"
+        res = install(tok, gem, fol)
+        if res.get("ok"):
+            print(f"OK|{res.get('bot_username')}|{res.get('bot_name')}|{res.get('folder')}")
+            sys.exit(0)
+        else:
+            print(f"ERR|{res.get('error')}")
+            sys.exit(1)
 
     # CLI mode: install_core.py <token> [gemini_key] [folder]
     if len(sys.argv) >= 2 and not sys.argv[1].startswith("--"):

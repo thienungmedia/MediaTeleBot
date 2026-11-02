@@ -62,23 +62,20 @@ Chọn thao tác bạn muốn thực hiện:"
         do shell script quoted form of pyPath & " " & quoted form of coreScript & " --restart"
         display dialog "✅ ĐÃ KHỞI ĐỘNG LẠI THÀNH CÔNG!" & return & return & "Dịch vụ đã được nạp lại và đang chạy ngầm 24/7." with title "Khởi Động Lại" buttons {"OK"} default button "OK" with icon note
     else if userChoice is "Đổi Thư Mục" then
-        set newFolderRes to (display dialog "☁️ ĐỔI THƯ MỤC GOOGLE DRIVE MẶC ĐỊNH
-
+        try
+            set newFolderRes to (display dialog "☁️ ĐỔI THƯ MỤC GOOGLE DRIVE MẶC ĐỊNH
+    
 Dán LINK hoặc Nhập TÊN thư mục Google Drive:
-(Hỗ trợ link thư mục được chia sẻ quyền chỉnh sửa)" default answer folderVal with title "Đổi Thư Mục Upload" buttons {"Huỷ", "Lưu"} default button "Lưu" with icon note)
-        set newFolder to text returned of newFolderRes
-        if newFolder is not "" then
-            set changeCmd to quoted form of pyPath & " -c \"
-import sys
-sys.path.insert(0, '$HOME/Library/Application Support/MacFileBot')
-import safe_fs
-safe_fs.CONFIG_PATH = safe_fs.BASE_DIR / 'config.json'
-res = safe_fs.set_default_gdrive_folder('''\" & newFolder & \"''')
-print(res.get('folder_name', ''))
-\""
-            set changedName to do shell script changeCmd
-            do shell script quoted form of pyPath & " " & quoted form of coreScript & " --restart"
-            display dialog "✅ ĐÃ ĐỔI THƯ MỤC THÀNH CÔNG!" & return & return & "Thư mục upload mới: " & changedName with title "Thành Công" buttons {"OK"} default button "OK" with icon note
-        end if
+(Hỗ trợ link thư mục được chia sẻ quyền chỉnh sửa)" default answer folderVal with title "Đổi Thư Mục Upload" buttons {"Huỷ", "Lưu"} default button "Lưu" cancel button "Huỷ" with icon note)
+            set newFolder to text returned of newFolderRes
+            if newFolder is not "" then
+                set changedName to do shell script quoted form of pyPath & " " & quoted form of coreScript & " --set-folder " & quoted form of newFolder
+                do shell script quoted form of pyPath & " " & quoted form of coreScript & " --restart"
+                display dialog "✅ ĐÃ ĐỔI THƯ MỤC THÀNH CÔNG!" & return & return & "Thư mục upload mới: " & changedName with title "Thành Công" buttons {"OK"} default button "OK" with icon note
+            end if
+        on error number -128
+            -- Người dùng bấm Huỷ: thoát êm ái không báo lỗi
+            return
+        end try
     end if
 end run

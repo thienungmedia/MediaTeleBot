@@ -1,7 +1,19 @@
-# 🎬 MAC FILE BOT - TRỢ LÝ QUẢN LÝ FILE MAC QUA TELEGRAM
+<p align="center">
+  <img src="assets/logo.jpg" width="160" style="border-radius: 32px; box-shadow: 0 8px 24px rgba(0,0,0,0.15);" alt="MacFileBot Logo">
+</p>
 
-> **Trợ lý cá nhân thông minh dành cho Creators, Editors & Filmmakers:**  
-> Điều khiển máy Mac từ xa bằng tiếng Việt tự nhiên qua Telegram: Tìm kiếm file/footage khắp các ổ cứng ngoài, kiểm tra dung lượng, tải lên Google Drive tự lấy link chia sẻ, và tự động gửi link cho đối tác/khách hàng qua Zalo.
+<h1 align="center">🎬 MAC FILE BOT - TRỢ LÝ ĐIỀU KHIỂN MAC QUA TELEGRAM</h1>
+
+<p align="center">
+  <b>Trợ lý cá nhân thông minh dành cho Creators, Editors & Filmmakers</b><br>
+  Điều khiển máy Mac từ xa bằng tiếng Việt tự nhiên qua Telegram: Quản lý footage ổ cứng ngoài, kiểm tra dung lượng, tải lên Google Drive tự lấy link gửi khách, đặt lịch âm/dương công việc, và tự động gửi link qua Zalo.
+</p>
+
+<p align="center">
+  <a href="https://github.com/thienungmedia/MediaTeleBot/raw/main/MacFileBot_Installer.pkg">
+    <img src="https://img.shields.io/badge/📦%20TẢI%20GÓI%20CÀI%20ĐẶT-MacFileBot__Installer.pkg%20(1--Click)-007AFF?style=for-the-badge&logo=apple&logoColor=white" alt="Download PKG">
+  </a>
+</p>
 
 ---
 
@@ -118,26 +130,28 @@ Gemini AI giúp bot hiểu ngôn ngữ tự nhiên hàng ngày (dù bạn nói l
 
 ---
 
-## 3. CÀI ĐẶT 1-CLICK TRÊN MÁY MAC
+## 3. CÀI ĐẶT 1-CLICK BẰNG GÓI CHUẨN MACOS (.PKG)
 
 Sau khi đã có **Bot Token** (và Gemini API Key):
 
-1. Mở thư mục **`MacFileBot_Assistant`** trên máy Mac của bạn.
-2. Bấm đúp chuột vào file:  
-   👉 **`CaiDat.command`**
-3. Cửa sổ Terminal sẽ mở ra với giao diện cài đặt tiếng Việt:
-   * **Dán Bot Token** bạn vừa lấy ở Bước 1 ➔ Nhấn `Enter`.
-   * **Dán Gemini API Key** bạn vừa lấy ở Bước 2 (nếu chưa có, nhấn `Enter` để bỏ qua).
-   * **Dán LINK hoặc Nhập tên thư mục Google Drive mặc định** (Hỗ trợ dán cả link thư mục do chủ dự án chia sẻ quyền chỉnh sửa, ví dụ: `https://drive.google.com/drive/folders/...` hoặc gõ tên `THIEN UNG PRODUCTION`) ➔ Nhấn `Enter`.
-4. Trình cài đặt sẽ tự động thiết lập dịch vụ chạy ngầm (`LaunchAgent`).  
-   **Từ nay, mỗi khi máy Mac khởi động, bot sẽ tự động chạy ngầm mà bạn không cần mở Terminal hay giữ cửa sổ nào!**
+1. Tải gói cài đặt:  
+   👉 [**MacFileBot_Installer.pkg** (Tải trực tiếp)](https://github.com/thienungmedia/MediaTeleBot/raw/main/MacFileBot_Installer.pkg)
+2. Bấm đúp chuột vào file **`MacFileBot_Installer.pkg`** ➔ Chọn **Tiếp tục** ➔ **Cài đặt** (nhập mật khẩu máy Mac nếu được hỏi).
+3. Sau khi cài đặt hoàn tất, hộp thoại cấu hình giao diện Apple sẽ tự động bật lên:
+   * **Dán Bot Token** bạn vừa lấy ở Bước 1 (có kèm nút *[Xem Hướng Dẫn]* trực quan) ➔ Bấm **Tiếp tục**.
+   * **Dán Gemini API Key** ở Bước 2 (hoặc bấm *Bỏ qua* nếu chưa có).
+   * **Dán LINK hoặc Nhập tên thư mục Google Drive mặc định** (Hỗ trợ cả link thư mục do chủ dự án chia sẻ quyền chỉnh sửa, ví dụ: `https://drive.google.com/drive/folders/...` hoặc `PRODUCTION`) ➔ Bấm **Tiếp tục**.
+4. Hệ thống sẽ tự động cài sâu vào macOS và đăng ký dịch vụ chạy ngầm (`com.macfilebot.telegrambot`).  
+   **Từ nay, mỗi khi máy Mac khởi động, bot sẽ tự động chạy ngầm 24/7 mà bạn không cần mở Terminal hay giữ cửa sổ nào!**
 5. **KÍCH HOẠT CHỦ NHÂN DUY NHẤT:**
-   * Mở Telegram trên điện thoại/máy tính của bạn.
-   * Tìm con bot bạn vừa tạo ở Bước 1 và gửi tin nhắn:  
+   * Bấm nút **"Mở Telegram Ngay"** trên màn hình cài đặt.
+   * Gửi tin nhắn:  
      ```text
      /start
      ```
    * Bot sẽ lập tức phản hồi: `✅ ĐÃ KẾT NỐI VỚI MÁY MAC CỦA BẠN!` và tự động khoá quyền điều khiển cho riêng tài khoản Telegram này.
+6. **Ứng dụng quản lý đi kèm:**
+   * Trong thư mục **Applications** (Launchpad) của máy sẽ có sẵn **`MacFileBot Manager.app`** để bạn kiểm tra trạng thái đang chạy, đổi thư mục Drive hoặc khởi động lại bot bất cứ lúc nào.
 
 ---
 
