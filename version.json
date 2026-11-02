@@ -1,6 +1,6 @@
 {
-  "version": "1.4.1",
-  "release_notes": "• Tích hợp sẵn trí tuệ nhân tạo Gemini AI (với bộ nhớ ngữ cảnh hội thoại):\n  - Tự động hiểu mọi cách nói tự nhiên, phương ngữ, tiếng lóng, câu nối tiếp và dịch chuẩn xác sang lệnh hệ thống (Tìm file, Kiểm tra dung lượng, Up Drive, Lấy link, Gửi Zalo, Note lịch).\n  - Hỗ trợ trò chuyện tự nhiên 'trên trời dưới đất' (tâm sự, viết caption trả khách, hỏi kỹ thuật quay dựng...) mà vẫn giữ nguyên chốt bảo vệ CẤM XOÁ FILE 100%.\n• Đồng bộ Lịch thông minh cho cả máy không cài Antigravity (Ghi vào Lịch macOS + Nút lưu Google Calendar 1 chạm).",
+  "version": "1.4.2",
+  "release_notes": "• Liên kết ngữ cảnh thông minh khi gửi link Google Drive qua Zalo:\n  - Sau khi tìm file/thư mục hoặc lấy link, bạn chỉ cần nhắn ngắn gọn: 'gửi qua cho Hoàng', 'gửi link đấy qua cho Hoàng Dựng', 'gửi file đó cho Hoàng'... bot sẽ tự động hiểu và lấy đúng link Google Drive vừa tìm được ở tin nhắn trước để gửi.\n  - Khi yêu cầu gửi file/thư mục cho ai đó, bot mặc định 100% là gửi link Google Drive qua Zalo (không chuyển file nội bộ).\n• Tích hợp sẵn trí tuệ nhân tạo Gemini AI hiểu mọi ngữ cảnh nói tự nhiên & trò chuyện đa chủ đề.",
   "files": {
     "bot.py": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/bot.py",
     "safe_fs.py": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/safe_fs.py",

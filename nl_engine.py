@@ -489,7 +489,7 @@ def resolve_destination(dest_phrase: str) -> Path | None:
 def clean_zalo_entity(name: str) -> str:
     name = clean_polite_phrases(name)
     name = re.sub(
-        r"^(?:link\s+(?:file\s+|thư\s+mục\s+|folder\s+)?|file\s+|thư\s+mục\s+|folder\s+|video\s+|clip\s+)",
+        r"^(?:cái\s+)?(?:link\s+(?:google\s*drive\s+|gg\s*drive\s+|drive\s+)?(?:của\s+)?(?:file\s+|thư\s+mục\s+|folder\s+|mục\s+)?|file\s+|thư\s+mục\s+|folder\s+|mục\s+|video\s+|clip\s+)",
         "",
         name,
         flags=re.IGNORECASE,
@@ -502,6 +502,35 @@ def clean_zalo_recipient(name: str) -> str:
     name = re.sub(r"^(?:qua\s+cho\s+|cho\s+|tới\s+|đến\s+|qua\s+)", "", name, flags=re.IGNORECASE).strip()
     name = re.sub(r"\s+(?:qua|bên|vào|trên|bằng)?\s*zalo.*$", "", name, flags=re.IGNORECASE).strip()
     return name
+
+
+def _is_context_pronoun(target_str: str) -> bool:
+    """
+    Kiểm tra xem cụm từ mục tiêu có phải là đại từ chỉ định tới file/link vừa tìm ở tin nhắn trước không
+    (ví dụ: 'đấy', 'đó', 'này', 'ấy', 'nó', 'link đấy', 'file đó', 'folder vừa tìm', hoặc bỏ trống).
+    """
+    s = strip_accents(target_str or "").lower().strip()
+    if not s or s == "__last_item__":
+        return True
+    pronoun_tokens = {
+        "nay", "do", "day", "ay", "no", "kia",
+        "vua", "moi", "tim", "roi", "xong", "duoc", "thay", "lay", "ra", "hoi",
+        "tren", "o", "cai", "link", "duong", "file", "tap", "tin", "tep",
+        "thu", "muc", "folder", "video", "clip", "source", "du", "an", "project",
+        "google", "gg", "drive", "cua", "qua", "ben", "vao", "sang", "luon", "di",
+    }
+    tokens = [w for w in re.split(r"[^a-z0-9]+", s) if w]
+    if not tokens:
+        return True
+    if all(w in pronoun_tokens for w in tokens):
+        return True
+    return False
+
+
+_NON_RECIPIENT_WORDS = {
+    "toi", "minh", "khach", "ai", "link", "google drive", "gg drive", "drive",
+    "xem", "toi xem", "minh xem", "film data", "desktop", "downloads", "documents",
+}
 
 
 def _try_zalo_dispatch(t: str, chat_id: int) -> dict | None:
@@ -517,7 +546,7 @@ def _try_zalo_dispatch(t: str, chat_id: int) -> dict | None:
     # Ví dụ: "up file test.mp4 lên drive rồi gửi link cho anh Thăng qua zalo"
     #        "up 2810 lên drive rồi gửi qua cho Hoàng Dựng"
     m_chain = re.search(
-        r"^(?:hãy\s+|giúp\s+tôi\s+)?(?:up|upload|tải|đẩy)\s+(.+?)\s+lên\s+(?:google\s*drive|gg\s*drive|drive)\s+(?:rồi|và|xong|để)\s+(?:gửi|bắn|chia\s+sẻ)\s+(.*)$",
+        r"^(?:hãy\s+|giúp\s+tôi\s+)?(?:up|upload|tải|đẩy)\s+(.+?)\s+lên\s+(?:google\s*drive|gg\s*drive|drive)\s+(?:rồi|và|xong|để)\s+(?:gửi|bắn|chia\s+sẻ|share)\s+(.*)$",
         t_clean,
         flags=re.IGNORECASE,
     )
@@ -526,46 +555,58 @@ def _try_zalo_dispatch(t: str, chat_id: int) -> dict | None:
         rest = m_chain.group(2).strip()
         rest_clean = re.sub(r"^(?:link\s+)?(?:drive\s+)?", "", rest, flags=re.IGNORECASE).strip()
         rec = re.sub(r"(?:qua|bên|vào|trên|bằng)?\s*zalo", "", rest_clean, flags=re.IGNORECASE).strip()
-        rec = re.sub(r"^(?:qua\s+cho|cho|tới|đến)\s+", "", rec, flags=re.IGNORECASE).strip()
+        rec = re.sub(r"^(?:qua\s+cho|cho|tới|đến|qua)\s+", "", rec, flags=re.IGNORECASE).strip()
         raw_recipient = rec
         is_chain = True
 
     # Pattern B: Direct Send Google Drive Link to a recipient (via Zalo or general)
+    # Khi người dùng bảo gửi file/folder/link cho ai đấy thì MẶC ĐỊNH là gửi link Google Drive qua Zalo
     if not is_chain:
         # Form 1: Recipient first
         # e.g.: "gửi qua zalo cho Hoàng Dựng link 2510"
-        #       "gửi qua zalo Hoàng Dựng link 2510"
-        #       "gửi cho Hoàng Dựng link 2510 qua zalo"
+        #       "gửi cho Hoàng Dựng file 2510"
+        #       "gửi qua cho Hoàng cái link đấy"
         m1 = re.search(
-            r"^(?:hãy\s+|giúp\s+tôi\s+)?(?:gửi|gui|bắn|ban|chia\s+sẻ|chia\s+se|share)\s+(?:(?:qua|bên|vào|trên)?\s*zalo\s+)?(?:qua\s+)?cho\s+(.+?)\s+(?:cái\s+|link\s+|drive\s+|file\s+|thư\s+mục\s+)(.+?)(?:\s+(?:qua|bên|vào|trên|bằng)?\s*zalo)?$",
+            r"^(?:hãy\s+|giúp\s+tôi\s+)?(?:gửi|gui|bắn|ban|chia\s+sẻ|chia\s+se|share)\s+(?:(?:qua|bên|vào|trên)?\s*zalo\s+)?(?:qua\s+)?cho\s+(.+?)\s+(?:cái\s+|link\s+|drive\s+|file\s+|thư\s+mục\s+|folder\s+|mục\s+)(.+?)(?:\s+(?:qua|bên|vào|trên|bằng)?\s*zalo)?$",
             t_clean,
             flags=re.IGNORECASE,
         )
         if m1:
-            raw_recipient = m1.group(1).strip()
-            raw_target = m1.group(2).strip()
+            cand_rec = clean_zalo_recipient(m1.group(1).strip())
+            if cand_rec and strip_accents(cand_rec).lower() not in _NON_RECIPIENT_WORDS:
+                raw_recipient = cand_rec
+                raw_target = m1.group(2).strip()
 
         if not raw_target:
             m1b = re.search(
-                r"^(?:hãy\s+|giúp\s+tôi\s+)?(?:gửi|gui|bắn|ban|chia\s+sẻ|chia\s+se|share)\s+(?:qua|bên|vào|trên)?\s*zalo\s+(.+?)\s+(?:cái\s+|link\s+|drive\s+|file\s+|thư\s+mục\s+)(.+?)$",
+                r"^(?:hãy\s+|giúp\s+tôi\s+)?(?:gửi|gui|bắn|ban|chia\s+sẻ|chia\s+se|share)\s+(?:qua|bên|vào|trên)?\s*zalo\s+(.+?)\s+(?:cái\s+|link\s+|drive\s+|file\s+|thư\s+mục\s+|folder\s+|mục\s+)(.+?)$",
                 t_clean,
                 flags=re.IGNORECASE,
             )
             if m1b:
-                raw_recipient = m1b.group(1).strip()
-                raw_target = m1b.group(2).strip()
+                cand_rec = clean_zalo_recipient(m1b.group(1).strip())
+                if cand_rec and strip_accents(cand_rec).lower() not in _NON_RECIPIENT_WORDS:
+                    raw_recipient = cand_rec
+                    raw_target = m1b.group(2).strip()
 
         # Form 2: Target first, then separator, then recipient
-        # Separator covers:
-        # - "qua zalo cho [recipient]"
-        # - "qua zalo [recipient]"
-        # - "bên zalo cho [recipient]"
-        # - "bên zalo [recipient]"
-        # - "qua cho [recipient]"
-        # - "cho [recipient]" (kèm hoặc không kèm "qua zalo" ở cuối)
+        # Ví dụ:
+        # - "gửi link đấy qua cho hoàng dựng"
+        # - "gửi file psc hằng cần cho Hoàng"
+        # - "gửi folder 2510 qua cho Hoàng Dựng"
+        # - "lấy link psc hằng cần gửi qua zalo cho Hoàng Dựng"
         if not raw_target:
-            action_prefix = r"^(?:hãy\s+|giúp\s+tôi\s+)?(?:gửi|gui|bắn|ban|chia\s+sẻ|chia\s+se|share)\s+(?:link\s+)?(?:google\s*drive\s+|gg\s*drive\s+|drive\s+)?(?:file\s+|thư\s+mục\s+|folder\s+|mục\s+)?"
-            sep_pattern = r"(?:\s+(?:qua|bên|trên)?\s*zalo\s+cho\s+|\s+(?:qua|bên|trên)?\s*zalo\s+|\s+qua\s+cho\s+|\s+cho\s+)"
+            action_prefix = (
+                r"^(?:hãy\s+|giúp\s+tôi\s+|cho\s+tôi\s+)?"
+                r"(?:(?:lấy|tìm|xin)\s+(?:link\s+)?(?:rồi\s+|và\s+)?)?"
+                r"(?:gửi|gui|bắn|ban|chia\s+sẻ|chia\s+se|share|chuyển\s+link|(?:lấy|tìm)\s+link)\s+"
+                r"(?:cái\s+)?(?:link\s+)?(?:google\s*drive\s+|gg\s*drive\s+|drive\s+)?(?:của\s+)?(?:file\s+|thư\s+mục\s+|folder\s+|mục\s+)?"
+            )
+            sep_pattern = (
+                r"(?:\s+(?:rồi|và|xong))?"
+                r"(?:\s+(?:gửi|gui|bắn|ban|chia\s+sẻ|chia\s+se|share)(?:\s+link)?)?"
+                r"(?:\s+(?:qua|bên|trên)?\s*zalo\s+(?:qua\s+)?cho\s+|\s+(?:qua|bên|trên)?\s*zalo\s+|\s+qua\s+cho\s+|\s+cho\s+|\s+tới\s+|\s+đến\s+)"
+            )
             m2 = re.search(
                 f"{action_prefix}(.+?){sep_pattern}(.+?)(?:\\s+(?:qua|bên|vào|trên|bằng)?\\s*zalo)?$",
                 t_clean,
@@ -575,9 +616,31 @@ def _try_zalo_dispatch(t: str, chat_id: int) -> dict | None:
                 cand_target = m2.group(1).strip()
                 cand_recipient = m2.group(2).strip()
                 cand_clean_rec = clean_zalo_recipient(cand_recipient)
-                # Ignore non-recipient objects like "cho tôi", "cho mình", "cho khách"
-                if cand_clean_rec and cand_clean_rec.lower() not in ("toi", "minh", "khach", "ai", "link", "google drive"):
+                cand_target_norm = strip_accents(cand_target).lower().strip()
+                # Nếu phần trước "cho" chỉ là giới từ ("qua", "qua zalo", "bên zalo") thì không phải tên file -> để Form 0 xử lý
+                if (
+                    cand_target_norm not in ("qua", "ben", "vao", "tren", "sang", "zalo", "qua zalo", "ben zalo")
+                    and cand_clean_rec
+                    and strip_accents(cand_clean_rec).lower() not in _NON_RECIPIENT_WORDS
+                ):
                     raw_target = cand_target
+                    raw_recipient = cand_clean_rec
+
+        # Form 0: Omitted target (người dùng nối tiếp câu trước: "gửi qua cho Hoàng", "gửi link qua cho Hoàng Dựng", "gửi cho Hoàng")
+        if not raw_target:
+            m0 = re.search(
+                r"^(?:hãy\s+|giúp\s+tôi\s+)?(?:(?:lấy|tìm)\s+link\s+(?:rồi\s+|và\s+)?)?"
+                r"(?:gửi|gui|bắn|ban|chia\s+sẻ|chia\s+se|share|chuyển\s+link)\s+"
+                r"(?:(?:cái\s+)?(?:link\s+|đường\s+link\s+)?(?:google\s*drive\s+|gg\s*drive\s+|drive\s+)?(?:file\s+|thư\s+mục\s+|folder\s+|mục\s+)?)?"
+                r"(?:(?:qua|bên|vào|trên)?\s*zalo\s+(?:qua\s+)?(?:cho\s+)?|qua\s+cho\s+|cho\s+|tới\s+|đến\s+)"
+                r"(.+?)(?:\s+(?:qua|bên|vào|trên|bằng)?\s*zalo)?$",
+                t_clean,
+                flags=re.IGNORECASE,
+            )
+            if m0:
+                cand_clean_rec = clean_zalo_recipient(m0.group(1).strip())
+                if cand_clean_rec and strip_accents(cand_clean_rec).lower() not in _NON_RECIPIENT_WORDS:
+                    raw_target = "__LAST_ITEM__"
                     raw_recipient = cand_clean_rec
 
     if not raw_target or not raw_recipient:
@@ -586,13 +649,25 @@ def _try_zalo_dispatch(t: str, chat_id: int) -> dict | None:
     recipient = clean_zalo_recipient(raw_recipient)
     target = clean_zalo_entity(raw_target)
 
-    t_target_norm = strip_accents(target).lower()
-    if t_target_norm in ("nay", "do", "ay", "file nay", "thu muc nay", "muc nay", "folder nay", "cai nay", "no", ""):
-        candidates = PENDING_CONFIRM.get(chat_id, {}).get("candidates", [])
-        if candidates:
-            target = candidates[0]["name"]
-        elif chat_id in LAST_CONTEXT and LAST_CONTEXT[chat_id].get("last_item"):
-            target = LAST_CONTEXT[chat_id]["last_item"]
+    used_context = False
+    cached_gd_item = None
+    ctx = LAST_CONTEXT.get(chat_id, {})
+
+    if _is_context_pronoun(target) or _is_context_pronoun(raw_target):
+        used_context = True
+        cached_gd_item = ctx.get("last_gdrive_item")
+        if ctx.get("last_item"):
+            target = ctx["last_item"]
+        elif PENDING_CONFIRM.get(chat_id, {}).get("candidates"):
+            target = PENDING_CONFIRM[chat_id]["candidates"][0]["name"]
+        else:
+            return {
+                "handled": True,
+                "reply": (
+                    f"ℹ️ Bạn muốn gửi link file/thư mục nào trên Google Drive cho *{recipient}*?\n"
+                    f"Hãy tìm file trước hoặc nhắn: `gửi link <tên file/thư mục> qua cho {recipient}` nhé!"
+                ),
+            }
 
     LAST_CONTEXT.setdefault(chat_id, {})["last_item"] = target
 
@@ -603,11 +678,19 @@ def _try_zalo_dispatch(t: str, chat_id: int) -> dict | None:
             res["reply"] += f"\n\n💬 *Lưu ý:* Sau khi tải lên và Google Drive đồng bộ link xong, bot sẽ tự động tạo nút bấm gửi Zalo cho *{recipient}*!"
         return res
 
-    # 1. Tìm trên Google Drive trước
+    # 1. Tìm trên Google Drive trước (ưu tiên kết quả vừa tìm được ở tin nhắn trước nếu dùng đại từ nối tiếp)
     raw_matches = query_gdrive_items(target)
     matches = [m for m in raw_matches if not m.get("name", "").startswith("._")]
+    if used_context and cached_gd_item:
+        if not matches:
+            matches = [cached_gd_item]
+        elif cached_gd_item.get("url"):
+            matches = [cached_gd_item] + [m for m in matches if m.get("url") != cached_gd_item.get("url")]
+
     if matches:
         m = matches[0]
+        LAST_CONTEXT.setdefault(chat_id, {})["last_gdrive_item"] = m
+        LAST_CONTEXT.setdefault(chat_id, {})["last_item"] = m.get("name", target)
         if m.get("is_synced") and m.get("url"):
             zalo_text = safe_fs.build_zalo_text(m["name"], m["url"])
             safe_fs.set_zalo_pending(recipient, zalo_text)
@@ -887,13 +970,13 @@ def parse_and_execute_nl(text: str, chat_id: int = 0, _from_llm: bool = False) -
 
     # 1. Get Google Drive Share Link ("Lấy link file test.mp4 trong thư mục THIEN UNG PRODUCTION cho tôi", "xin link test.mp4")
     link_match = re.search(
-        r"(?:lấy\s+link|xin\s+link|gửi\s+link|tạo\s+link|copy\s+link|link\s+google\s+drive|link\s+gg\s+drive|link\s+drive|cho\s+tôi\s+link|cho\s+xin\s+link)\s+(.+)$",
+        r"(?:lấy\s+link|xin\s+link|gửi\s+link|tạo\s+link|copy\s+link|link\s+google\s+drive|link\s+gg\s+drive|link\s+drive|cho\s+tôi\s+link|cho\s+xin\s+link)(?:\s+(.+))?$",
         t,
         flags=re.IGNORECASE,
     )
     if link_match and not re.search(r"^(?:up|upload|tải|đẩy)\b", t_lower):
-        raw_query = link_match.group(1)
-        return _execute_get_gdrive_link(raw_query)
+        raw_query = (link_match.group(1) or "").strip()
+        return _execute_get_gdrive_link(raw_query, chat_id)
 
     # 2. Check disk / drive free space
     if re.search(r"(ổ\s*(cứng|đĩa)|film\s*data).*?(trống|dung\s*lượng|bao\s*nhiêu)", t_lower) or t_lower in (
@@ -922,6 +1005,9 @@ def parse_and_execute_nl(text: str, chat_id: int = 0, _from_llm: bool = False) -
     if size_match:
         raw_target = size_match.group(1)
         clean_target = clean_polite_phrases(raw_target)
+        if _is_context_pronoun(clean_target) and LAST_CONTEXT.get(chat_id, {}).get("last_item"):
+            clean_target = LAST_CONTEXT[chat_id]["last_item"]
+            raw_target = clean_target
         matches = find_best_matches(raw_target)
         gd_matches = query_gdrive_items(clean_target) if clean_target else []
 
@@ -962,10 +1048,11 @@ def parse_and_execute_nl(text: str, chat_id: int = 0, _from_llm: bool = False) -
                     f"  • Nằm trong: {gm.get('parent_name', 'Google Drive')}\n"
                     f"  • Tổng dung lượng: {gm.get('size', '?')}{cnt_info}{url_line}\n"
                 )
-        if matches:
-            LAST_CONTEXT.setdefault(chat_id, {})["last_item"] = matches[0]["name"]
-        elif gd_matches:
+        if gd_matches:
             LAST_CONTEXT.setdefault(chat_id, {})["last_item"] = gd_matches[0]["name"]
+            LAST_CONTEXT.setdefault(chat_id, {})["last_gdrive_item"] = gd_matches[0]
+        elif matches:
+            LAST_CONTEXT.setdefault(chat_id, {})["last_item"] = matches[0]["name"]
         return {"handled": True, "reply": "\n".join(lines), "matches": matches[:5]}
 
     # 4. Upload to Google Drive (Default destination: THIEN UNG PRODUCTION!)
@@ -981,7 +1068,7 @@ def parse_and_execute_nl(text: str, chat_id: int = 0, _from_llm: bool = False) -
         subfolder = clean_polite_phrases(raw_subfolder) if raw_subfolder else get_default_gdrive_subfolder()
         if not subfolder:
             subfolder = get_default_gdrive_subfolder()
-        LAST_CONTEXT[chat_id] = {"action": "gdrive", "subfolder": subfolder}
+        LAST_CONTEXT.setdefault(chat_id, {}).update({"action": "gdrive", "subfolder": subfolder})
         return _prepare_gdrive_confirmation(raw_target, subfolder, chat_id)
 
     # 5. Move or Copy between folders/drives
@@ -995,7 +1082,7 @@ def parse_and_execute_nl(text: str, chat_id: int = 0, _from_llm: bool = False) -
         raw_src = move_copy_match.group(2)
         raw_dst = move_copy_match.group(3)
         is_copy = verb in ("copy", "sao chép", "chép")
-        LAST_CONTEXT[chat_id] = {"action": "move_copy", "raw_dst": raw_dst, "is_copy": is_copy}
+        LAST_CONTEXT.setdefault(chat_id, {}).update({"action": "move_copy", "raw_dst": raw_dst, "is_copy": is_copy})
         return _prepare_move_copy_confirmation(raw_src, raw_dst, is_copy, chat_id)
 
     # 6. Follow-up clarification
@@ -1034,7 +1121,7 @@ def parse_and_execute_nl(text: str, chat_id: int = 0, _from_llm: bool = False) -
         flags=re.IGNORECASE,
     )
     if shared_match:
-        sr = _smart_search_reply(t)
+        sr = _smart_search_reply(t, chat_id)
         if sr.get("matches"):
             LAST_CONTEXT.setdefault(chat_id, {})["last_item"] = sr["matches"][0]["name"]
         return sr
@@ -1048,7 +1135,7 @@ def parse_and_execute_nl(text: str, chat_id: int = 0, _from_llm: bool = False) -
     ))
     find_match = None if is_knowledge_search else re.search(r"^(?:tìm|tìm\s+kiếm|kiếm|kiểm\s+tra|check)\s+(.+)$", t, flags=re.IGNORECASE)
     if find_match:
-        sr = _smart_search_reply(find_match.group(1))
+        sr = _smart_search_reply(find_match.group(1), chat_id)
         if sr.get("matches"):
             LAST_CONTEXT.setdefault(chat_id, {})["last_item"] = sr["matches"][0]["name"]
         if _from_llm or "Không tìm thấy mục nào" not in sr.get("reply", ""):
@@ -1063,6 +1150,7 @@ def parse_and_execute_nl(text: str, chat_id: int = 0, _from_llm: bool = False) -
             "chao", "hello", "hi", "alo", "oi", "ban", "em", "anh", "tao", "may", "ai",
             "sao", "gi", "nao", "khong", "ha", "nhi", "ke", "viet", "tu", "van", "hoi",
             "buon", "vui", "met", "chan", "dep", "xau", "thoi", "tiet", "an", "uong",
+            "gui", "share", "chuyen", "up", "tim", "note", "lich",
         }
         words_norm = [w for w in re.split(r"[^a-z0-9]+", t_norm) if w]
         if (
@@ -1071,7 +1159,7 @@ def parse_and_execute_nl(text: str, chat_id: int = 0, _from_llm: bool = False) -
             and not any(w in chat_indicators for w in words_norm)
             and "?" not in t
         ):
-            sr = _smart_search_reply(t)
+            sr = _smart_search_reply(t, chat_id)
             if sr.get("handled") and "Không tìm thấy mục nào" not in sr.get("reply", ""):
                 if sr.get("matches"):
                     LAST_CONTEXT.setdefault(chat_id, {})["last_item"] = sr["matches"][0]["name"]
@@ -1110,7 +1198,7 @@ def parse_and_execute_nl(text: str, chat_id: int = 0, _from_llm: bool = False) -
 
         # Dự phòng nếu không có mạng tới Gemini nhưng câu ngắn khớp tên file trên máy/Drive
         if 1 <= len(t.split()) <= 7 and not t.startswith("/"):
-            sr = _smart_search_reply(t)
+            sr = _smart_search_reply(t, chat_id)
             if sr.get("handled") and "Không tìm thấy mục nào" not in sr.get("reply", ""):
                 if sr.get("matches"):
                     LAST_CONTEXT.setdefault(chat_id, {})["last_item"] = sr["matches"][0]["name"]
@@ -1715,7 +1803,7 @@ def smart_search(raw_query: str, limit: int = 12) -> tuple[list[dict], list[str]
     return ranked[:limit], q_tokens
 
 
-def _smart_search_reply(raw_query: str) -> dict:
+def _smart_search_reply(raw_query: str, chat_id: int = 0) -> dict:
     q = raw_query.strip()
     is_shared_intent = False
     in_gdrive = bool(re.search(r"(?:trong|ở|trên|tại)\s+(?:google\s*drive|gg\s*drive|drive)\b", q, flags=re.IGNORECASE))
@@ -1774,6 +1862,9 @@ def _smart_search_reply(raw_query: str) -> dict:
                     f"💡 Mẹo: Trên Google Drive, khi thợ hoặc ai đó gửi link chia sẻ, bạn chỉ cần click mở link 1 lần thì mục đó mới xuất hiện trong 'Được chia sẻ với tôi' để bot quét được."
                 ),
             }
+        if chat_id:
+            LAST_CONTEXT.setdefault(chat_id, {})["last_item"] = matches_to_show[0]["name"]
+            LAST_CONTEXT.setdefault(chat_id, {})["last_gdrive_item"] = matches_to_show[0]
         lines = [f"🤝 KẾT QUẢ TÌM TRONG MỤC 'ĐƯỢC CHIA SẺ VỚI TÔI' (Google Drive) cho '{shown_q}':\n"]
         for i, m in enumerate(matches_to_show[:8], 1):
             icon = "📁" if m.get("is_dir") else "📄"
@@ -1787,6 +1878,8 @@ def _smart_search_reply(raw_query: str) -> dict:
         if not gd_matches:
             local_results, _ = smart_search(clean_q, limit=5)
             if local_results:
+                if chat_id:
+                    LAST_CONTEXT.setdefault(chat_id, {})["last_item"] = local_results[0]["name"]
                 lines = [
                     f"🔍 Không tìm thấy '{shown_q}' trên Google Drive.",
                     f"\n💡 Nhưng tôi tìm thấy trên máy Mac / ổ cứng:"
@@ -1797,6 +1890,9 @@ def _smart_search_reply(raw_query: str) -> dict:
                 return {"handled": True, "reply": "\n".join(lines)}
             return {"handled": True, "reply": f"🔍 Không tìm thấy mục nào khớp với '{shown_q}' trên Google Drive của bạn (kể cả mục Được chia sẻ với tôi)."}
 
+        if chat_id:
+            LAST_CONTEXT.setdefault(chat_id, {})["last_item"] = gd_matches[0]["name"]
+            LAST_CONTEXT.setdefault(chat_id, {})["last_gdrive_item"] = gd_matches[0]
         lines = [f"☁️ KẾT QUẢ TÌM TRÊN GOOGLE DRIVE cho '{shown_q}':\n"]
         matches = []
         for i, m in enumerate(gd_matches[:8], 1):
@@ -1812,6 +1908,13 @@ def _smart_search_reply(raw_query: str) -> dict:
 
     if not results and not gd_matches:
         return {"handled": True, "reply": f"🔍 Không tìm thấy mục nào liên quan tới '{shown_q}' trên máy, ổ cứng hay Google Drive."}
+
+    if chat_id:
+        if gd_matches:
+            LAST_CONTEXT.setdefault(chat_id, {})["last_item"] = gd_matches[0]["name"]
+            LAST_CONTEXT.setdefault(chat_id, {})["last_gdrive_item"] = gd_matches[0]
+        elif results:
+            LAST_CONTEXT.setdefault(chat_id, {})["last_item"] = results[0]["name"]
 
     lines = [f"🔍 KẾT QUẢ TÌM KIẾM cho '{shown_q}':\n"]
     matches = []
@@ -1852,9 +1955,13 @@ def _smart_search_reply(raw_query: str) -> dict:
     return {"handled": True, "reply": "\n".join(lines), "matches": matches}
 
 
-def _execute_get_gdrive_link(raw_query: str) -> dict:
+def _execute_get_gdrive_link(raw_query: str, chat_id: int = 0) -> dict:
     item_name, parent_hint, _, _ = parse_source_specification(raw_query)
-    if not item_name:
+    if _is_context_pronoun(item_name) or _is_context_pronoun(raw_query):
+        ctx_item = LAST_CONTEXT.get(chat_id, {}).get("last_item")
+        if ctx_item:
+            item_name = ctx_item
+    if not item_name or _is_context_pronoun(item_name):
         return {"handled": True, "reply": "ℹ️ Bạn muốn lấy link của file hay thư mục nào trên Google Drive?"}
 
     is_shared_hint = bool(
@@ -1870,6 +1977,10 @@ def _execute_get_gdrive_link(raw_query: str) -> dict:
                 f"💡 Bạn có thể nhắn: \"Up file {item_name} lên drive\" để tải lên thư mục {def_folder} và nhận link ngay!"
             ),
         }
+
+    if chat_id:
+        LAST_CONTEXT.setdefault(chat_id, {})["last_item"] = matches[0]["name"]
+        LAST_CONTEXT.setdefault(chat_id, {})["last_gdrive_item"] = matches[0]
 
     lines = [f"🔗 LINK GOOGLE DRIVE ĐỂ GỬI KHÁCH:\n"]
     for m in matches[:5]:
@@ -1891,8 +2002,6 @@ def _execute_get_gdrive_link(raw_query: str) -> dict:
 
     return {"handled": True, "reply": "\n".join(lines)}
 
-    return {"handled": True, "reply": "\n".join(lines)}
-
 
 def _prepare_gdrive_confirmation(raw_target: str, subfolder: str, chat_id: int) -> dict:
     gdrive_root = find_google_drive_root(auto_launch=True)
@@ -1911,6 +2020,9 @@ def _prepare_gdrive_confirmation(raw_target: str, subfolder: str, chat_id: int) 
     dst_display = f"Google Drive / {dst_dir.name}"
 
     item_name, parent_hint, root_hint, type_hint = parse_source_specification(raw_target)
+    if (_is_context_pronoun(item_name) or _is_context_pronoun(raw_target)) and LAST_CONTEXT.get(chat_id, {}).get("last_item"):
+        raw_target = LAST_CONTEXT[chat_id]["last_item"]
+        item_name = raw_target
     matches = find_best_matches(raw_target)
 
     if not matches and parent_hint:
@@ -2001,8 +2113,11 @@ def _prepare_move_copy_confirmation(raw_src: str, raw_dst: str, is_copy: bool, c
             "reply": f"❌ Không tìm thấy ổ đĩa hoặc thư mục đích '{dst_clean}'.",
         }
 
-    matches = find_best_matches(raw_src, exclude_root=str(dst_path))
     src_name, _, _, _ = parse_source_specification(raw_src)
+    if (_is_context_pronoun(src_name) or _is_context_pronoun(raw_src)) and LAST_CONTEXT.get(chat_id, {}).get("last_item"):
+        raw_src = LAST_CONTEXT[chat_id]["last_item"]
+        src_name = raw_src
+    matches = find_best_matches(raw_src, exclude_root=str(dst_path))
 
     if not matches:
         already_in_dst = find_best_matches(raw_src)

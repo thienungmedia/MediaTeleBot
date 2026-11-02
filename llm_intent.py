@@ -140,12 +140,19 @@ Hãy dịch ý của họ thành ĐÚNG 1 DÒNG bắt đầu bằng `CMD: ` theo
    - "đẩy cái psc hằng cần lên drive lấy link gửi khách" -> `CMD: up file psc hằng cần lên drive`
    - "cho xin cái link drive của bộ psc hằng cần" -> `CMD: lấy link file psc hằng cần`
 
-7. GỬI LINK GOOGLE DRIVE QUA ZALO CHO KHÁCH / THỢ:
-   - Gửi link có sẵn: `CMD: gửi link file <tên> cho <người nhận> qua zalo`
-   - Up lên Drive xong tự gửi link: `CMD: up file <tên> lên drive rồi gửi link cho <người nhận> qua zalo`
+7. GỬI LINK GOOGLE DRIVE QUA ZALO CHO KHÁCH / THỢ (MẶC ĐỊNH KHI BẢO GỬI FILE / FOLDER / LINK CHO AI ĐÓ):
+   - Khi người dùng bảo "gửi file...", "gửi folder...", "gửi thư mục...", "gửi link..." cho một người nào đó (vd: Hoàng, Hoàng Dựng, anh Thăng...), MẶC ĐỊNH 100% là gửi link Google Drive qua Zalo (KHÔNG phải chuyển file nội bộ trong máy):
+     `CMD: gửi link file <tên> cho <người nhận> qua zalo`
+   - Up lên Drive xong tự gửi link:
+     `CMD: up file <tên> lên drive rồi gửi link cho <người nhận> qua zalo`
+   - LIÊN KẾT NGỮ CẢNH CÂU TRƯỚC (RẤT QUAN TRỌNG):
+     Nếu câu trước vừa tìm/nhắc tới một file hoặc thư mục (có trong `File/thư mục vừa thao tác gần nhất` hoặc lịch sử hội thoại), và câu này người dùng nói ngắn gọn như:
+     "gửi qua cho Hoàng", "gửi link đấy qua cho Hoàng Dựng", "gửi cái đó cho Hoàng", "bắn qua cho anh Thăng đi", "gửi folder đấy cho Hoàng":
+     -> BẮT BUỘC thay thế đại từ ("đấy", "đó", "này", "nó", hoặc chỗ khuyết) bằng đúng tên file/thư mục vừa tìm được ở câu trước!
    Ví dụ:
    - "bắn cái link psc hằng cần qua zalo cho Hoàng Dựng đi" -> `CMD: gửi link file psc hằng cần cho Hoàng Dựng qua zalo`
-   - Nếu câu trước vừa tìm/nhắc tới file X và câu này người dùng nói "gửi link nó qua zalo cho anh Thăng luôn": hãy thay "nó" bằng tên file X!
+   - (Câu trước vừa tìm `2810 HOÀNG DỰNG`) "gửi link đấy qua cho hoàng dựng" -> `CMD: gửi link file 2810 HOÀNG DỰNG cho hoàng dựng qua zalo`
+   - (Câu trước vừa tìm `psc hằng cần`) "gửi qua cho Hoàng" -> `CMD: gửi link file psc hằng cần cho Hoàng qua zalo`
 
 8. XEM BÊN TRONG THƯ MỤC / ĐỔI THƯ MỤC MẶC ĐỊNH / CẬP NHẬT BOT:
    - Mở xem thư mục/ổ đĩa: `CMD: xem trong <nơi> có gì` (vd: `CMD: xem trong desktop có gì`, `CMD: xem trong film data có gì`)
