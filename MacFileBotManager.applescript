@@ -4,16 +4,7 @@ on run
     set parentDir to do shell script "dirname " & quoted form of myPath
     
     set pyPath to do shell script "
-    for p in '/Library/Frameworks/Python.framework/Versions/3.14/bin/python3' \
-             '/Library/Frameworks/Python.framework/Versions/3.13/bin/python3' \
-             '/Library/Frameworks/Python.framework/Versions/3.12/bin/python3' \
-             '/Library/Frameworks/Python.framework/Versions/3.11/bin/python3' \
-             '/Library/Frameworks/Python.framework/Versions/3.10/bin/python3' \
-             '/Library/Frameworks/Python.framework/Versions/3.9/bin/python3' \
-             '/opt/homebrew/bin/python3' \
-             '/usr/local/bin/python3' \
-             '/Library/Developer/CommandLineTools/usr/bin/python3' \
-             '/usr/bin/python3'; do
+    for p in '/Library/Frameworks/Python.framework/Versions/3.14/bin/python3' '/Library/Frameworks/Python.framework/Versions/3.13/bin/python3' '/Library/Frameworks/Python.framework/Versions/3.12/bin/python3' '/Library/Frameworks/Python.framework/Versions/3.11/bin/python3' '/Library/Frameworks/Python.framework/Versions/3.10/bin/python3' '/Library/Frameworks/Python.framework/Versions/3.9/bin/python3' '/opt/homebrew/bin/python3' '/usr/local/bin/python3' '/Library/Developer/CommandLineTools/usr/bin/python3' '/usr/bin/python3'; do
         if [ -x \"$p\" ] && \"$p\" -c 'import sys; assert sys.version_info >= (3, 8)' >/dev/null 2>&1; then
             echo \"$p\"
             exit 0

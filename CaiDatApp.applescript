@@ -5,16 +5,7 @@ on run
     
     -- 1. Tìm Python 3 thực sự hoạt động (kiểm tra chạy thử import sys)
     set pyPath to do shell script "
-    for p in '/Library/Frameworks/Python.framework/Versions/3.14/bin/python3' \
-             '/Library/Frameworks/Python.framework/Versions/3.13/bin/python3' \
-             '/Library/Frameworks/Python.framework/Versions/3.12/bin/python3' \
-             '/Library/Frameworks/Python.framework/Versions/3.11/bin/python3' \
-             '/Library/Frameworks/Python.framework/Versions/3.10/bin/python3' \
-             '/Library/Frameworks/Python.framework/Versions/3.9/bin/python3' \
-             '/opt/homebrew/bin/python3' \
-             '/usr/local/bin/python3' \
-             '/Library/Developer/CommandLineTools/usr/bin/python3' \
-             '/usr/bin/python3'; do
+    for p in '/Library/Frameworks/Python.framework/Versions/3.14/bin/python3' '/Library/Frameworks/Python.framework/Versions/3.13/bin/python3' '/Library/Frameworks/Python.framework/Versions/3.12/bin/python3' '/Library/Frameworks/Python.framework/Versions/3.11/bin/python3' '/Library/Frameworks/Python.framework/Versions/3.10/bin/python3' '/Library/Frameworks/Python.framework/Versions/3.9/bin/python3' '/opt/homebrew/bin/python3' '/usr/local/bin/python3' '/Library/Developer/CommandLineTools/usr/bin/python3' '/usr/bin/python3'; do
         if [ -x \"$p\" ] && \"$p\" -c 'import sys; assert sys.version_info >= (3, 8)' >/dev/null 2>&1; then
             echo \"$p\"
             exit 0
@@ -51,12 +42,12 @@ Nhấn 'Tiếp tục' để bắt đầu thiết lập nhanh trong 1 phút."
     
     -- Tự động tìm thư mục chứa core scripts
     set coreDir to do shell script "
-    if [ -f " & quoted form of parentDir & "'/install_core.py' ]; then
+    if [ -f " & quoted form of (parentDir & "/install_core.py") & " ]; then
         echo " & quoted form of parentDir & "
-    elif [ -f '/Library/Application Support/MacFileBot/install_core.py' ]; then
-        echo '/Library/Application Support/MacFileBot'
     elif [ -f \"$HOME/Library/Application Support/MacFileBot/install_core.py\" ]; then
         echo \"$HOME/Library/Application Support/MacFileBot\"
+    elif [ -f '/Library/Application Support/MacFileBot/install_core.py' ]; then
+        echo '/Library/Application Support/MacFileBot'
     else
         echo " & quoted form of parentDir & "
     fi
