@@ -33,18 +33,8 @@ on run
         return
     end if
     
-    -- Lấy trạng thái hiện tại
-    set statusJson to do shell script quoted form of pyPath & " " & quoted form of coreScript & " --status"
-    set parseCmd to quoted form of pyPath & " -c \"
-import json, sys
-data = json.loads('''\" & statusJson & \"''')
-running = data.get('is_running', False)
-pid = data.get('pid', '')
-folder = data.get('folder', 'PRODUCTION')
-owner = str(data.get('owner_id') or 'Chưa nhận diện')
-print(f'{running}|{pid}|{folder}|{owner}')
-\""
-    set stParsed to do shell script parseCmd
+    -- Lấy trạng thái hiện tại (gọi --status-simple, trả về chuỗi trực tiếp)
+    set stParsed to do shell script quoted form of pyPath & " " & quoted form of coreScript & " --status-simple"
     set AppleScript's text item delimiters to "|"
     set stItems to text items of stParsed
     set isRunning to item 1 of stItems

@@ -258,13 +258,25 @@ def get_status() -> dict:
             pid = line.split("=")[-1].strip()
             break
 
+    # Nếu service mới chưa chạy, thử kiểm tra service cũ
+    if not is_running:
+        chk_old = subprocess.run(["launchctl", "print", f"gui/{uid}/com.thienung.telegramfilebot"], capture_output=True, text=True)
+        if "state = running" in chk_old.stdout or "pid = " in chk_old.stdout:
+            is_running = True
+            for line in chk_old.stdout.splitlines():
+                if "pid = " in line:
+                    pid = line.split("=")[-1].strip()
+                    break
+
     cfg = {}
-    cfg_file = TARGET_DIR / "config.json"
-    if cfg_file.exists():
-        try:
-            cfg = json.loads(cfg_file.read_text(encoding="utf-8"))
-        except Exception:
-            pass
+    for p in [TARGET_DIR / "config.json", Path.home() / ".gemini/antigravity/scratch/telegram-file-manager/config.json", SOURCE_DIR / "config.json"]:
+        if p.exists():
+            try:
+                cfg = json.loads(p.read_text(encoding="utf-8"))
+                if cfg.get("bot_token"):
+                    break
+            except Exception:
+                pass
 
     return {
         "installed": TARGET_DIR.exists() and (TARGET_DIR / "bot.py").exists(),
@@ -298,13 +310,110 @@ def restart() -> dict:
     return get_status()
 
 
+def setup_service() -> dict:
+    """Setup and start LaunchAgent service from existing TARGET_DIR/config.json."""
+    cfg_file = TARGET_DIR / "config.json"
+    if not cfg_file.exists():
+        return {"ok": False, "error": "Chưa có config.json"}
+    try:
+        cfg = json.loads(cfg_file.read_text(encoding="utf-8"))
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+    uid = os.getuid()
+    old_plist = LAUNCH_AGENTS_DIR / "com.thienung.telegramfilebot.plist"
+    if old_plist.exists():
+        subprocess.run(["launchctl", "bootout", f"gui/{uid}/com.thienung.telegramfilebot"], capture_output=True)
+        subprocess.run(["launchctl", "unload", "-w", str(old_plist)], capture_output=True)
+        subprocess.run(["pkill", "-f", "scratch/telegram-file-manager/bot.py"], capture_output=True)
+
+    python_bin = find_best_python()
+    plist_content = f"""<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>{PLIST_NAME}</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>{python_bin}</string>
+        <string>{TARGET_DIR}/bot.py</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>{TARGET_DIR}</string>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>{TARGET_DIR}/bot_service.log</string>
+    <key>StandardErrorPath</key>
+    <string>{TARGET_DIR}/bot_service.err.log</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/Library/Frameworks/Python.framework/Versions/Current/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <key>HOME</key>
+        <string>{Path.home()}</string>
+        <key>PYTHONUNBUFFERED</key>
+        <string>1</string>
+    </dict>
+</dict>
+</plist>
+"""
+    LAUNCH_AGENTS_DIR.mkdir(parents=True, exist_ok=True)
+    PLIST_PATH.write_text(plist_content, encoding="utf-8")
+    os.chmod(PLIST_PATH, 0o644)
+
+    subprocess.run(["launchctl", "bootout", f"gui/{uid}/{PLIST_NAME}"], capture_output=True)
+    subprocess.run(["launchctl", "bootout", f"gui/{uid}", str(PLIST_PATH)], capture_output=True)
+    subprocess.run(["launchctl", "unload", "-w", str(PLIST_PATH)], capture_output=True)
+    subprocess.run(["pkill", "-f", f"{TARGET_DIR}/bot.py"], capture_output=True)
+    time.sleep(0.5)
+
+    subprocess.run(["launchctl", "load", "-w", str(PLIST_PATH)], capture_output=True)
+    subprocess.run(["launchctl", "bootstrap", f"gui/{uid}", str(PLIST_PATH)], capture_output=True)
+    subprocess.run(["launchctl", "enable", f"gui/{uid}/{PLIST_NAME}"], capture_output=True)
+    subprocess.run(["launchctl", "kickstart", "-k", "-p", f"gui/{uid}/{PLIST_NAME}"], capture_output=True)
+    return {"ok": True}
+
+
 if __name__ == "__main__":
     if len(sys.argv) >= 2 and sys.argv[1] == "--status":
         print(json.dumps(get_status(), indent=2, ensure_ascii=False))
         sys.exit(0)
 
+    if len(sys.argv) >= 2 and sys.argv[1] == "--status-simple":
+        st = get_status()
+        running = "True" if st.get("is_running") else "False"
+        pid = st.get("pid", "")
+        folder = st.get("folder", "PRODUCTION")
+        owner = str(st.get("owner_id") or "Chưa nhận diện")
+        print(f"{running}|{pid}|{folder}|{owner}")
+        sys.exit(0)
+
+    if len(sys.argv) >= 2 and sys.argv[1] == "--get-config-simple":
+        cfg = {}
+        for p in [TARGET_DIR / "config.json", Path.home() / ".gemini/antigravity/scratch/telegram-file-manager/config.json", SOURCE_DIR / "config.json"]:
+            if p.exists():
+                try:
+                    cfg = json.loads(p.read_text(encoding="utf-8"))
+                    if cfg.get("bot_token"):
+                        break
+                except Exception:
+                    pass
+        token = cfg.get("bot_token", "")
+        gemini = cfg.get("gemini_api_key", "")
+        folder = cfg.get("default_gdrive_folder", "PRODUCTION")
+        print(f"{token}|{gemini}|{folder}")
+        sys.exit(0)
+
     if len(sys.argv) >= 2 and sys.argv[1] == "--restart":
         print(json.dumps(restart(), indent=2, ensure_ascii=False))
+        sys.exit(0)
+
+    if len(sys.argv) >= 2 and sys.argv[1] == "--setup-service":
+        print(json.dumps(setup_service(), indent=2, ensure_ascii=False))
         sys.exit(0)
 
     if len(sys.argv) >= 2 and sys.argv[1] == "--uninstall":

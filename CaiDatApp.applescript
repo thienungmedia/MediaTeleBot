@@ -50,48 +50,18 @@ Nhấn 'Tiếp tục' để bắt đầu thiết lập nhanh trong 1 phút."
     set htmlTokenUrl to "file://" & htmlGuide & "#telegram"
     set htmlGeminiUrl to "file://" & htmlGuide & "#gemini"
     
-    -- 2.5 Đọc thông tin cấu hình cũ nếu có (để tự điền sẵn)
+    -- 2.5 Đọc thông tin cấu hình cũ nếu có (gọi --get-config-simple)
     set preToken to ""
     set preGemini to ""
     set preFolder to "PRODUCTION"
     try
-        set preToken to do shell script quoted form of pyPath & " -c \"
-import json, os
-for p in [os.path.expanduser('~/Library/Application Support/MacFileBot/config.json'), os.path.expanduser('~/.gemini/antigravity/scratch/telegram-file-manager/config.json'), '" & parentDir & "/config.json']:
-    if os.path.exists(p):
-        try:
-            t = json.load(open(p)).get('bot_token', '')
-            if t:
-                print(t)
-                break
-        except: pass
-\""
-    end try
-    try
-        set preGemini to do shell script quoted form of pyPath & " -c \"
-import json, os
-for p in [os.path.expanduser('~/Library/Application Support/MacFileBot/config.json'), os.path.expanduser('~/.gemini/antigravity/scratch/telegram-file-manager/config.json'), '" & parentDir & "/config.json']:
-    if os.path.exists(p):
-        try:
-            k = json.load(open(p)).get('gemini_api_key', '')
-            if k:
-                print(k)
-                break
-        except: pass
-\""
-    end try
-    try
-        set preFolder to do shell script quoted form of pyPath & " -c \"
-import json, os
-for p in [os.path.expanduser('~/Library/Application Support/MacFileBot/config.json'), os.path.expanduser('~/.gemini/antigravity/scratch/telegram-file-manager/config.json'), '" & parentDir & "/config.json']:
-    if os.path.exists(p):
-        try:
-            f = json.load(open(p)).get('default_gdrive_folder', '')
-            if f:
-                print(f)
-                break
-        except: pass
-\""
+        set cfgParsed to do shell script quoted form of pyPath & " " & quoted form of (parentDir & "/install_core.py") & " --get-config-simple"
+        set AppleScript's text item delimiters to "|"
+        set cfgItems to text items of cfgParsed
+        set preToken to item 1 of cfgItems
+        set preGemini to item 2 of cfgItems
+        set preFolder to item 3 of cfgItems
+        set AppleScript's text item delimiters to ""
         if preFolder is "" then set preFolder to "PRODUCTION"
     end try
 
