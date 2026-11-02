@@ -56,11 +56,26 @@ on run
 
 Chọn thao tác bạn muốn thực hiện:"
     
-    set userChoice to button returned of (display dialog menuMsg with title "MacFileBot Manager" buttons {"Đổi Thư Mục", "Khởi Động Lại", "Đóng"} default button "Đóng" with icon note)
+    set userChoice to button returned of (display dialog menuMsg with title "MacFileBot Manager" buttons {"Đổi Thư Mục", "Kiểm Tra Lỗi", "Khởi Động Lại"} default button "Khởi Động Lại" with icon note)
     
     if userChoice is "Khởi Động Lại" then
         do shell script quoted form of pyPath & " " & quoted form of coreScript & " --restart"
         display dialog "✅ ĐÃ KHỞI ĐỘNG LẠI THÀNH CÔNG!" & return & return & "Dịch vụ đã được nạp lại và đang chạy ngầm 24/7." with title "Khởi Động Lại" buttons {"OK"} default button "OK" with icon note
+    else if userChoice is "Kiểm Tra Lỗi" then
+        set kiemTraScript to do shell script "
+        if [ -f " & quoted form of parentDir & "'/KiemTraLoi.command' ]; then
+            echo " & quoted form of parentDir & "'/KiemTraLoi.command'
+        elif [ -f \"$HOME/Library/Application Support/MacFileBot/KiemTraLoi.command\" ]; then
+            echo \"$HOME/Library/Application Support/MacFileBot/KiemTraLoi.command\"
+        elif [ -f \"$HOME/Desktop/Kiểm Tra Lỗi Bot.command\" ]; then
+            echo \"$HOME/Desktop/Kiểm Tra Lỗi Bot.command\"
+        else
+            echo ''
+        fi
+        "
+        if kiemTraScript is not "" then
+            do shell script "open -a Terminal " & quoted form of kiemTraScript
+        end if
     else if userChoice is "Đổi Thư Mục" then
         try
             set newFolderRes to (display dialog "☁️ ĐỔI THƯ MỤC GOOGLE DRIVE MẶC ĐỊNH

@@ -42,6 +42,33 @@ CONSOLE_USER=$(stat -f "%Su" /dev/console 2>/dev/null || echo "$USER")
 CONSOLE_UID=$(id -u "$CONSOLE_USER" 2>/dev/null || echo "501")
 CONSOLE_HOME=$(eval echo "~$CONSOLE_USER")
 
+# 1. Tự động kiểm tra và cài đặt Python 3.12 chính thức nếu máy chưa có Python Framework
+HAS_OFFICIAL_PYTHON=0
+for p in /Library/Frameworks/Python.framework/Versions/3.14/bin/python3 \
+         /Library/Frameworks/Python.framework/Versions/3.13/bin/python3 \
+         /Library/Frameworks/Python.framework/Versions/3.12/bin/python3 \
+         /Library/Frameworks/Python.framework/Versions/3.11/bin/python3 \
+         /opt/homebrew/bin/python3; do
+    if [ -x "$p" ]; then
+        HAS_OFFICIAL_PYTHON=1
+        break
+    fi
+done
+
+if [ "$HAS_OFFICIAL_PYTHON" -eq 0 ]; then
+    echo "Đang tự động cài đặt Python 3.12 chính thức cho macOS..."
+    PY_PKG="/tmp/python-3.12-macos.pkg"
+    # Tải gói Python 3.12 chính thức từ python.org (Universal macOS 11+)
+    curl -sL --connect-timeout 10 --max-time 180 "https://www.python.org/ftp/python/3.12.8/python-3.12.8-macos11.pkg" -o "$PY_PKG" 2>/dev/null || true
+    if [ -s "$PY_PKG" ]; then
+        installer -pkg "$PY_PKG" -target / >/dev/null 2>&1 || true
+        rm -f "$PY_PKG"
+        if [ -x "/Applications/Python 3.12/Install Certificates.command" ]; then
+            "/Applications/Python 3.12/Install Certificates.command" >/dev/null 2>&1 || true
+        fi
+    fi
+fi
+
 USER_TARGET_DIR="$CONSOLE_HOME/Library/Application Support/MacFileBot"
 mkdir -p "$USER_TARGET_DIR"
 cp -R "/Library/Application Support/MacFileBot/"* "$USER_TARGET_DIR/" 2>/dev/null || true
@@ -64,9 +91,12 @@ fi
 if [ -d "$CONSOLE_HOME/Desktop" ]; then
     cp -R "/Applications/Cài Đặt MacFileBot.app" "$CONSOLE_HOME/Desktop/" 2>/dev/null || true
     cp -R "/Applications/MacFileBot Manager.app" "$CONSOLE_HOME/Desktop/" 2>/dev/null || true
-    chown -R "$CONSOLE_USER":staff "$CONSOLE_HOME/Desktop/Cài Đặt MacFileBot.app" "$CONSOLE_HOME/Desktop/MacFileBot Manager.app" 2>/dev/null || true
+    cp "$USER_TARGET_DIR/KiemTraLoi.command" "$CONSOLE_HOME/Desktop/Kiểm Tra Lỗi Bot.command" 2>/dev/null || true
+    chmod +x "$CONSOLE_HOME/Desktop/Kiểm Tra Lỗi Bot.command" 2>/dev/null || true
+    chown -R "$CONSOLE_USER":staff "$CONSOLE_HOME/Desktop/Cài Đặt MacFileBot.app" "$CONSOLE_HOME/Desktop/MacFileBot Manager.app" "$CONSOLE_HOME/Desktop/Kiểm Tra Lỗi Bot.command" 2>/dev/null || true
     xattr -dr com.apple.quarantine "$CONSOLE_HOME/Desktop/Cài Đặt MacFileBot.app" 2>/dev/null || true
     xattr -dr com.apple.quarantine "$CONSOLE_HOME/Desktop/MacFileBot Manager.app" 2>/dev/null || true
+    xattr -dr com.apple.quarantine "$CONSOLE_HOME/Desktop/Kiểm Tra Lỗi Bot.command" 2>/dev/null || true
 fi
 
 # Tự động nạp dịch vụ nếu đã có config
