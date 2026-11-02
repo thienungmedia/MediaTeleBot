@@ -15,11 +15,19 @@ on run
     "
     
     if pyPath is "" then
-        display alert "❌ Chưa tìm thấy Python 3!" message "Máy Mac của bạn cần cài Python 3 để chạy bot." buttons {"Tải Python 3", "Huỷ"} default button "Tải Python 3" as critical
-        if button returned of result is "Tải Python 3" then
-            open location "https://www.python.org/downloads/"
-        end if
-        return
+        try
+            set pyDlg to (display dialog "⚙️ Máy Mac của bạn chưa có môi trường Python 3." & return & return & "Nhấn 'Tự Động Cài Python 3' để hệ thống tự tải và cài đặt Python 3.12 chính thức hoàn toàn tự động (khoảng 30-60 giây)." with title "Cài Đặt Môi Trường Python 3" buttons {"Huỷ", "Tự Động Cài Python 3"} default button "Tự Động Cài Python 3" cancel button "Huỷ" with icon note)
+        on error number -128
+            return
+        end try
+        try
+            do shell script "curl -sL --connect-timeout 15 --max-time 300 'https://www.python.org/ftp/python/3.12.8/python-3.12.8-macos11.pkg' -o /tmp/python-3.12-macos.pkg && installer -pkg /tmp/python-3.12-macos.pkg -target / && rm -f /tmp/python-3.12-macos.pkg" with administrator privileges
+            set pyPath to "/Library/Frameworks/Python.framework/Versions/3.12/bin/python3"
+        on error errPy
+            open location "https://www.python.org/ftp/python/3.12.8/python-3.12.8-macos11.pkg"
+            display alert "Đang tải bộ cài Python 3 trên trình duyệt" message "Sau khi tải xong file python-3.12.8-macos11.pkg, bạn hãy mở file đó để cài đặt rồi bấm lại Cài Đặt MacFileBot nhé!" as informational
+            return
+        end try
     end if
     
     -- 2. Hộp thoại chào mừng
@@ -91,7 +99,7 @@ Dán mã Bot Token của bạn vào ô dưới:"
         end try
         set clickedBtn to button returned of diagRes
         if clickedBtn is "Xem Hướng Dẫn" then
-            open location htmlTokenUrl
+            do shell script "open " & quoted form of htmlGuide
         else
             set botToken to text returned of diagRes
             set botToken to do shell script "echo " & quoted form of botToken & " | tr -d '[:space:]'"
@@ -119,7 +127,7 @@ Dán mã Gemini Key vào ô dưới (hoặc bấm 'Bỏ qua'):"
         end try
         set clickedKeyBtn to button returned of diagKey
         if clickedKeyBtn is "Xem Hướng Dẫn" then
-            open location htmlGeminiUrl
+            do shell script "open " & quoted form of htmlGuide
         else if clickedKeyBtn is "Bỏ qua" then
             set geminiKey to ""
             exit repeat
@@ -150,7 +158,8 @@ Bấm 'Mặc định' để dùng: PRODUCTION" default answer preFolder with tit
     set cmd to quoted form of pyPath & " " & quoted form of installerScript & " --install-simple " & quoted form of botToken & " " & quoted form of geminiKey & " " & quoted form of gdriveFolder
     
     try
-        set parsed to do shell script cmd
+        set rawOut to do shell script cmd
+        set parsed to last paragraph of rawOut
     on error errMsg
         display alert "❌ Cài đặt thất bại!" message errMsg as critical
         return

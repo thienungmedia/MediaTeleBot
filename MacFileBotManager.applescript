@@ -51,7 +51,11 @@ Chọn thao tác bạn muốn thực hiện:"
         set btn1 to "Mở Trợ Năng"
     end if
     
-    set userChoice to button returned of (display dialog menuMsg with title "MacFileBot Manager" buttons {btn1, "Kiểm Tra Lỗi", "Khởi Động Lại"} default button "Khởi Động Lại" with icon note)
+    try
+        set userChoice to button returned of (display dialog menuMsg with title "MacFileBot Manager" buttons {btn1, "Kiểm Tra Lỗi", "Khởi Động Lại"} default button "Khởi Động Lại" with icon note)
+    on error number -128
+        return
+    end try
     
     if userChoice is "Mở Trợ Năng" then
         do shell script "open 'x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility'"
