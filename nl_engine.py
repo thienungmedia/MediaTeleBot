@@ -962,6 +962,10 @@ def parse_and_execute_nl(text: str, chat_id: int = 0, _from_llm: bool = False) -
                     f"  • Nằm trong: {gm.get('parent_name', 'Google Drive')}\n"
                     f"  • Tổng dung lượng: {gm.get('size', '?')}{cnt_info}{url_line}\n"
                 )
+        if matches:
+            LAST_CONTEXT.setdefault(chat_id, {})["last_item"] = matches[0]["name"]
+        elif gd_matches:
+            LAST_CONTEXT.setdefault(chat_id, {})["last_item"] = gd_matches[0]["name"]
         return {"handled": True, "reply": "\n".join(lines), "matches": matches[:5]}
 
     # 4. Upload to Google Drive (Default destination: THIEN UNG PRODUCTION!)
@@ -1030,45 +1034,88 @@ def parse_and_execute_nl(text: str, chat_id: int = 0, _from_llm: bool = False) -
         flags=re.IGNORECASE,
     )
     if shared_match:
-        return _smart_search_reply(t)
+        sr = _smart_search_reply(t)
+        if sr.get("matches"):
+            LAST_CONTEXT.setdefault(chat_id, {})["last_item"] = sr["matches"][0]["name"]
+        return sr
 
     # 8. Search file/folder (smart search: ưu tiên SOURCE & FILM DATA & Google Drive)
     find_match = re.search(r"^(?:tìm|tìm\s+kiếm|kiếm|kiểm\s+tra|check)\s+(.+)$", t, flags=re.IGNORECASE)
     if find_match:
-        return _smart_search_reply(find_match.group(1))
+        sr = _smart_search_reply(find_match.group(1))
+        if sr.get("matches"):
+            LAST_CONTEXT.setdefault(chat_id, {})["last_item"] = sr["matches"][0]["name"]
+        if _from_llm or "Không tìm thấy mục nào" not in sr.get("reply", ""):
+            return sr
 
-    # Không khớp mẫu nào -> nhờ AI (Gemini) dịch câu tự nhiên thành lệnh chuẩn rồi chạy lại 1 lần
+    # 9. Trí tuệ nhân tạo Gemini tích hợp sẵn:
+    #    - Dịch mọi ngữ cảnh nói tự nhiên / tiếng lóng / nối tiếp câu trước sang chuẩn lệnh máy (CMD:)
+    #    - Hoặc trò chuyện tự nhiên "trên trời dưới đất" (CHAT:)
     if not _from_llm:
+        # Nếu người dùng gõ trực tiếp mã dự án / tên file ngắn (vd: "psc hằng cần", "2510") không chứa từ khoá tán gẫu
+        chat_indicators = {
+            "chao", "hello", "hi", "alo", "oi", "ban", "em", "anh", "tao", "may", "ai",
+            "sao", "gi", "nao", "khong", "ha", "nhi", "ke", "viet", "tu", "van", "hoi",
+            "buon", "vui", "met", "chan", "dep", "xau", "thoi", "tiet", "an", "uong",
+        }
+        words_norm = [w for w in re.split(r"[^a-z0-9]+", t_norm) if w]
+        if (
+            1 <= len(words_norm) <= 4
+            and not t.startswith("/")
+            and not any(w in chat_indicators for w in words_norm)
+            and "?" not in t
+        ):
+            sr = _smart_search_reply(t)
+            if sr.get("handled") and "Không tìm thấy mục nào" not in sr.get("reply", ""):
+                if sr.get("matches"):
+                    LAST_CONTEXT.setdefault(chat_id, {})["last_item"] = sr["matches"][0]["name"]
+                return sr
+
         try:
             import importlib
             import llm_intent
-            importlib.reload(llm_intent)
-            canonical = llm_intent.rewrite_to_command(t)
+            last_item = LAST_CONTEXT.get(chat_id, {}).get("last_item")
+            gem_res = llm_intent.process_with_gemini(
+                t,
+                chat_id=chat_id,
+                last_item=last_item,
+                default_folder=get_default_gdrive_subfolder(),
+            )
         except Exception:
-            canonical = None
-        if canonical and canonical.strip().lower() != t.strip().lower():
-            res = parse_and_execute_nl(canonical, chat_id, _from_llm=True)
-            if res.get("handled") and res.get("reply") and not res["reply"].startswith("🤔"):
-                res["reply"] = f"🤖 Tôi hiểu: \"{canonical}\"\n\n{res['reply']}"
-                return res
-            if res.get("open_dir"):
-                return res
+            gem_res = None
 
-        # Nếu người dùng gõ trực tiếp tên file/thư mục (vd: "psc hằng cần"), tự động tìm trên máy + ổ cứng + Google Drive!
+        if gem_res:
+            if gem_res.get("mode") == "cmd":
+                canonical = (gem_res.get("command") or "").strip()
+                if canonical and canonical.lower() != t.strip().lower():
+                    res = parse_and_execute_nl(canonical, chat_id, _from_llm=True)
+                    if res.get("matches"):
+                        LAST_CONTEXT.setdefault(chat_id, {})["last_item"] = res["matches"][0]["name"]
+                    if res.get("handled") and res.get("reply") and not res["reply"].startswith("🤔"):
+                        res["reply"] = f"🤖 Tôi hiểu ý bạn: \"{canonical}\"\n\n{res['reply']}"
+                        return res
+                    if res.get("open_dir"):
+                        return res
+            elif gem_res.get("mode") == "chat" and gem_res.get("reply"):
+                return {"handled": True, "reply": gem_res["reply"]}
+
+        # Dự phòng nếu không có mạng tới Gemini nhưng câu ngắn khớp tên file trên máy/Drive
         if 1 <= len(t.split()) <= 7 and not t.startswith("/"):
             sr = _smart_search_reply(t)
             if sr.get("handled") and "Không tìm thấy mục nào" not in sr.get("reply", ""):
+                if sr.get("matches"):
+                    LAST_CONTEXT.setdefault(chat_id, {})["last_item"] = sr["matches"][0]["name"]
                 return sr
 
     return {
         "handled": True,
         "reply": (
             f"🤔 Tôi chưa hiểu rõ câu lệnh: \"{t}\"\n\n"
-            f"💡 Bạn có thể nhắn theo các mẫu tự nhiên như:\n"
-            f"• \"Up file test trong phim xong lên drive\" (mặc định vào THIEN UNG PRODUCTION & lấy link)\n"
-            f"• \"Lấy link file test.mp4 trong thư mục THIEN UNG PRODUCTION\"\n"
-            f"• \"Chuyển thư mục 2410 qua film data\"\n"
-            f"• \"Thư mục 2410 nặng bao nhiêu gb\""
+            f"💡 Bạn có thể nhắn tự nhiên hoặc trò chuyện bất kỳ chủ đề gì, ví dụ:\n"
+            f"• \"Up file test trong phim xong lên drive\"\n"
+            f"• \"Lấy link psc hằng cần gửi qua zalo cho Hoàng Dựng\"\n"
+            f"• \"Note lịch 20/12 quay phóng sự cưới\"\n"
+            f"• \"Kiểm tra file psc hằng cần nặng bao nhiêu\""
         ),
     }
 

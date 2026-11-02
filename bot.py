@@ -12,6 +12,7 @@ import fcntl
 import importlib
 import json
 import os
+import re
 import signal
 import sys
 import threading
@@ -522,6 +523,19 @@ def handle_message(client: TelegramClient, cfg: dict, msg: dict) -> bool:
     if text.startswith("/drives"):
         view_text, kb = format_drives_view()
         client.send_message(chat_id, view_text, reply_markup=kb)
+        return False
+
+    # Cho phép người dùng dán trực tiếp Gemini API Key trên Telegram (nếu muốn dùng key riêng)
+    m_gem = re.match(r"^(?:/gemini|gemini|cài\s+gemini|set\s+gemini)\s+(\S+)$", text.strip(), flags=re.IGNORECASE)
+    if m_gem or (text.strip().startswith("AIzaSy") and len(text.strip().split()) == 1 and len(text.strip()) >= 35):
+        new_key = m_gem.group(1).strip() if m_gem else text.strip()
+        cfg["gemini_api_key"] = new_key
+        save_config(cfg)
+        client.send_message(
+            chat_id,
+            "✅ ĐÃ CẬP NHẬT MÃ GEMINI API KEY THÀNH CÔNG!\n"
+            "🤖 Bây giờ tôi có thể hiểu mọi ngữ cảnh câu lệnh tự nhiên và trò chuyện mọi chủ đề cùng bạn."
+        )
         return False
 
     if text.startswith("/ls"):
