@@ -29,6 +29,20 @@ def get_ssl_context():
     except Exception:
         return None
 
+
+def _urlopen_robust(req, timeout=15):
+    ctx = get_ssl_context()
+    try:
+        if ctx:
+            return urllib.request.urlopen(req, context=ctx, timeout=timeout)
+        return urllib.request.urlopen(req, timeout=timeout)
+    except Exception as e:
+        if "CERTIFICATE_VERIFY_FAILED" in str(e) or "certificate verify failed" in str(e):
+            unverified = ssl._create_unverified_context()
+            return urllib.request.urlopen(req, context=unverified, timeout=timeout)
+        raise
+
+
 SOURCE_DIR = Path(__file__).parent.resolve()
 TARGET_DIR = Path.home() / "Library" / "Application Support" / "MacFileBot"
 LAUNCH_AGENTS_DIR = Path.home() / "Library" / "LaunchAgents"
@@ -79,9 +93,7 @@ def verify_telegram_token(token: str) -> dict:
     url = f"https://api.telegram.org/bot{token}/getMe"
     try:
         req = urllib.request.Request(url, headers={"User-Agent": "MacFileBot-Installer/1.0"})
-        ctx = get_ssl_context()
-        opener = urllib.request.urlopen(req, context=ctx, timeout=10) if ctx else urllib.request.urlopen(req, timeout=10)
-        with opener as resp:
+        with _urlopen_robust(req, timeout=10) as resp:
             data = json.loads(resp.read().decode("utf-8"))
             if data.get("ok"):
                 return {"ok": True, "result": data.get("result", {})}

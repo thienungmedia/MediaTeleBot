@@ -60,6 +60,25 @@ if [ -f "$CONSOLE_HOME/.gemini/antigravity/scratch/telegram-file-manager/config.
     chmod 600 "$USER_TARGET_DIR/config.json"
 fi
 
+# Tạo biểu tượng ngoài Desktop để thợ dễ thấy và bấm mở
+if [ -d "$CONSOLE_HOME/Desktop" ]; then
+    cp -R "/Applications/Cài Đặt MacFileBot.app" "$CONSOLE_HOME/Desktop/" 2>/dev/null || true
+    cp -R "/Applications/MacFileBot Manager.app" "$CONSOLE_HOME/Desktop/" 2>/dev/null || true
+    chown -R "$CONSOLE_USER":staff "$CONSOLE_HOME/Desktop/Cài Đặt MacFileBot.app" "$CONSOLE_HOME/Desktop/MacFileBot Manager.app" 2>/dev/null || true
+    xattr -dr com.apple.quarantine "$CONSOLE_HOME/Desktop/Cài Đặt MacFileBot.app" 2>/dev/null || true
+    xattr -dr com.apple.quarantine "$CONSOLE_HOME/Desktop/MacFileBot Manager.app" 2>/dev/null || true
+fi
+
+# Tự động nạp dịch vụ nếu đã có config
+PY_BIN=""
+for p in /Library/Frameworks/Python.framework/Versions/3.14/bin/python3 /Library/Frameworks/Python.framework/Versions/3.13/bin/python3 /Library/Frameworks/Python.framework/Versions/3.12/bin/python3 /Library/Frameworks/Python.framework/Versions/3.11/bin/python3 /opt/homebrew/bin/python3 /usr/local/bin/python3 /usr/bin/python3; do
+    if [ -x "$p" ]; then PY_BIN="$p"; break; fi
+done
+
+if [ -n "$PY_BIN" ] && [ -f "$USER_TARGET_DIR/config.json" ]; then
+    sudo -u "$CONSOLE_USER" "$PY_BIN" "$USER_TARGET_DIR/install_core.py" --setup-service 2>/dev/null || true
+fi
+
 # Luôn luôn mở Cài Đặt MacFileBot để người dùng dán Token Bot & Gemini API Key
 launchctl asuser "$CONSOLE_UID" sudo -u "$CONSOLE_USER" open "/Applications/Cài Đặt MacFileBot.app" 2>/dev/null || \
 sudo -u "$CONSOLE_USER" open "/Applications/Cài Đặt MacFileBot.app" 2>/dev/null || \

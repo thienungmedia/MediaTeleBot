@@ -419,21 +419,62 @@ def handle_message(client: TelegramClient, cfg: dict, msg: dict) -> bool:
         owner_id = user_id
         print(f"[🔒 Bảo mật] Đã khoá quyền điều khiển cho chủ nhân Telegram ID: {owner_id} (@{username})", flush=True)
 
-    if user_id != owner_id:
-        # Im lặng hoàn toàn với người lạ (không trả lời gì), chỉ báo cho chủ nhân biết.
-        print(f"[🚫 Người lạ bị chặn] id={user_id} @{username}: {text[:80]}", flush=True)
-        now = time.time()
-        if now - cfg.get("_last_intruder_alert", 0) > 600 and cfg.get("chat_id"):
-            cfg["_last_intruder_alert"] = now
-            try:
-                client.send_message(
-                    cfg["chat_id"],
-                    f"🚨 Có người lạ vừa nhắn vào bot của bạn (đã bị chặn, không phản hồi):\n"
-                    f"• ID: {user_id}\n• Username: @{username or 'không có'}\n• Nội dung: {text[:100]}",
-                )
-            except Exception:
-                pass
+    allowed_users = set()
+    if owner_id:
+        allowed_users.add(owner_id)
+    for u in cfg.get("allowed_users", []):
+        try:
+            allowed_users.add(int(u))
+        except Exception:
+            pass
+
+    if user_id not in allowed_users:
+        print(f"[🚫 Người chưa được phân quyền] id={user_id} @{username}: {text[:80]}", flush=True)
+        # Phản hồi lịch sự và rõ ràng khi người lạ hoặc thợ bấm /start
+        if text.startswith("/start"):
+            owner_name = f"@{cfg.get('username')}" if cfg.get('username') else "chủ nhân"
+            alert_reply = (
+                "⛔ BẠN CHƯA ĐƯỢC PHÂN QUYỀN ĐIỀU KHIỂN MÁY MAC NÀY!\n\n"
+                f"• Con bot này đang liên kết với máy Mac của {owner_name}.\n"
+                f"• Telegram ID của bạn là: `{user_id}`\n\n"
+                "💡 ĐỂ SỬ DỤNG BOT NÀY:\n"
+                "1. Nếu đây là máy Mac của bạn: Hãy tạo Bot Token riêng bằng @BotFather và mở app 'Cài Đặt MacFileBot' trên máy của bạn để thiết lập.\n"
+                f"2. Nếu bạn là thợ/cộng sự muốn điều khiển máy Mac của {owner_name}: Hãy nhờ chủ nhân nhắn cho bot câu lệnh:\n"
+                f"   `thêm thợ {user_id}` để cấp quyền cho bạn."
+            )
+            client.send_message(chat_id, alert_reply)
+            # Thông báo cho chủ nhân
+            if cfg.get("chat_id"):
+                try:
+                    client.send_message(
+                        cfg["chat_id"],
+                        f"🚨 Thợ/Người dùng @{username or 'chưa đặt username'} (ID: `{user_id}`) vừa gửi /start vào bot của bạn.\n"
+                        f"👉 Nếu muốn cấp quyền cho người này cùng điều khiển máy, bạn hãy nhắn:\n`thêm thợ {user_id}`",
+                    )
+                except Exception:
+                    pass
         return False
+
+    # Lệnh cấp quyền thêm thợ dành riêng cho chủ nhân
+    t_lower = text.lower().strip()
+    if user_id == owner_id and (t_lower.startswith("thêm thợ ") or t_lower.startswith("them tho ") or t_lower.startswith("cấp quyền ") or t_lower.startswith("cap quyen ")):
+        parts = t_lower.split()
+        cand_id = parts[-1].strip("`'\" ")
+        if cand_id.isdigit():
+            new_uid = int(cand_id)
+            cur_allowed = cfg.get("allowed_users", [])
+            if new_uid not in cur_allowed:
+                cur_allowed.append(new_uid)
+                cfg["allowed_users"] = cur_allowed
+                save_config(cfg)
+                client.send_message(chat_id, f"✅ ĐÃ CẤP QUYỀN ĐIỀU KHIỂN CHO THỢ CÓ TELEGRAM ID: `{new_uid}`!\nBây giờ người này có thể gửi /start và tra cứu file trên máy Mac của bạn.")
+                try:
+                    client.send_message(new_uid, f"🎉 BẠN ĐÃ ĐƯỢC CHỦ NHÂN MÁY MAC CẤP QUYỀN ĐIỀU KHIỂN!\nHãy gửi lệnh /start để bắt đầu sử dụng.")
+                except Exception:
+                    pass
+            else:
+                client.send_message(chat_id, f"ℹ️ Thợ có Telegram ID `{new_uid}` đã có trong danh sách phân quyền từ trước.")
+            return False
 
     # Always keep latest chat_id updated
     if cfg.get("chat_id") != chat_id:
