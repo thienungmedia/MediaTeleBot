@@ -20,6 +20,37 @@ os.makedirs(f'{pkg_root}/Applications', exist_ok=True)
 os.makedirs(f'{pkg_root}/Library/Application Support/MacFileBot', exist_ok=True)
 os.makedirs(pkg_scripts, exist_ok=True)
 
+# 1.5 Biên dịch lại 2 App và gắn chặt AppIcon.icns (xoá Assets.car mặc định của AppleScript)
+import plistlib
+
+def compile_and_iconize_app(script_name: str, app_name: str, bundle_id: str):
+    app_path = f'{scratch_dir}/{app_name}'
+    if os.path.exists(app_path):
+        shutil.rmtree(app_path)
+    subprocess.run(['osacompile', '-o', app_path, f'{scratch_dir}/{script_name}'], check=True)
+    res_dir = f'{app_path}/Contents/Resources'
+    assets_car = f'{res_dir}/Assets.car'
+    if os.path.exists(assets_car):
+        os.remove(assets_car)
+    shutil.copy2(f'{scratch_dir}/AppIcon.icns', f'{res_dir}/AppIcon.icns')
+    shutil.copy2(f'{scratch_dir}/AppIcon.icns', f'{res_dir}/applet.icns')
+    info_p = f'{app_path}/Contents/Info.plist'
+    with open(info_p, 'rb') as fp:
+        info_data = plistlib.load(fp)
+    info_data.pop('CFBundleIconName', None)
+    info_data['CFBundleIconFile'] = 'AppIcon'
+    info_data['CFBundleIdentifier'] = bundle_id
+    with open(info_p, 'wb') as fp:
+        plistlib.dump(info_data, fp)
+    subprocess.run(['codesign', '--force', '--deep', '--sign', '-', app_path], capture_output=True)
+    subprocess.run([
+        'osascript', '-l', 'JavaScript', '-e',
+        f'ObjC.import("AppKit"); var img = $.NSImage.alloc.initWithContentsOfFile("{scratch_dir}/AppIcon.icns"); $.NSWorkspace.sharedWorkspace.setIconForFileOptions(img, "{app_path}", 0);'
+    ], capture_output=True)
+
+compile_and_iconize_app('CaiDatApp.applescript', 'Cài Đặt MacFileBot.app', 'com.macfilebot.installer')
+compile_and_iconize_app('MacFileBotManager.applescript', 'MacFileBot Manager.app', 'com.macfilebot.manager')
+
 # 2. Copy Apps vào /Applications
 shutil.copytree(f'{scratch_dir}/Cài Đặt MacFileBot.app', f'{pkg_root}/Applications/Cài Đặt MacFileBot.app')
 shutil.copytree(f'{scratch_dir}/MacFileBot Manager.app', f'{pkg_root}/Applications/MacFileBot Manager.app')
@@ -78,6 +109,21 @@ if [ -d "$CONSOLE_HOME/Desktop" ]; then
     xattr -dr com.apple.quarantine "$CONSOLE_HOME/Desktop/MacFileBot Manager.app" 2>/dev/null || true
     xattr -dr com.apple.quarantine "$CONSOLE_HOME/Desktop/Kiểm Tra Lỗi Bot.command" 2>/dev/null || true
 fi
+
+# Áp dụng trực tiếp icon mới lên Finder cho cả /Applications và Desktop
+osascript -l JavaScript -e "
+ObjC.import('AppKit');
+var iconPath = '$USER_TARGET_DIR/AppIcon.icns';
+var img = $.NSImage.alloc.initWithContentsOfFile(iconPath);
+if (img) {
+    var ws = $.NSWorkspace.sharedWorkspace;
+    ws.setIconForFileOptions(img, '/Applications/Cài Đặt MacFileBot.app', 0);
+    ws.setIconForFileOptions(img, '/Applications/MacFileBot Manager.app', 0);
+    ws.setIconForFileOptions(img, '$CONSOLE_HOME/Desktop/Cài Đặt MacFileBot.app', 0);
+    ws.setIconForFileOptions(img, '$CONSOLE_HOME/Desktop/MacFileBot Manager.app', 0);
+}
+" >/dev/null 2>&1 || true
+touch "/Applications/Cài Đặt MacFileBot.app" "/Applications/MacFileBot Manager.app" "$CONSOLE_HOME/Desktop/Cài Đặt MacFileBot.app" "$CONSOLE_HOME/Desktop/MacFileBot Manager.app" 2>/dev/null || true
 
 # Mở ứng dụng Cài Đặt MacFileBot ngay sau khi trình cài đặt hoàn tất
 (sleep 1; launchctl asuser "$CONSOLE_UID" sudo -u "$CONSOLE_USER" open "/Applications/Cài Đặt MacFileBot.app" 2>/dev/null || sudo -u "$CONSOLE_USER" open "/Applications/Cài Đặt MacFileBot.app" 2>/dev/null) >/dev/null 2>&1 &

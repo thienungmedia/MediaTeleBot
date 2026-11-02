@@ -16,7 +16,7 @@ on run
     
     if pyPath is "" then
         try
-            set pyDlg to (display dialog "⚙️ Máy Mac của bạn chưa có môi trường Python 3." & return & return & "Nhấn 'Tự Động Cài Python 3' để hệ thống tự tải và cài đặt Python 3.12 chính thức hoàn toàn tự động (khoảng 30-60 giây)." with title "Cài Đặt Môi Trường Python 3" buttons {"Huỷ", "Tự Động Cài Python 3"} default button "Tự Động Cài Python 3" cancel button "Huỷ" with icon note)
+            set pyDlg to (display dialog "⚙️ Máy Mac của bạn chưa có môi trường Python 3." & return & return & "Nhấn 'Tự Động Cài Python 3' để hệ thống tự tải và cài đặt Python 3.12 chính thức hoàn toàn tự động (khoảng 30-60 giây)." with title "Cài Đặt Môi Trường Python 3" buttons {"Huỷ", "Tự Động Cài Python 3"} default button "Tự Động Cài Python 3" cancel button "Huỷ" with icon (path to resource "AppIcon.icns"))
         on error number -128
             return
         end try
@@ -43,7 +43,7 @@ Hệ thống sẽ được cài đặt sâu vào máy Mac để chạy ngầm na
 Nhấn 'Tiếp tục' để bắt đầu thiết lập nhanh trong 1 phút."
     
     try
-        display dialog welcomeMsg with title "Cài Đặt MacFileBot" buttons {"Huỷ", "Tiếp tục"} default button "Tiếp tục" cancel button "Huỷ" with icon note
+        display dialog welcomeMsg with title "Cài Đặt MacFileBot" buttons {"Huỷ", "Tiếp tục"} default button "Tiếp tục" cancel button "Huỷ" with icon (path to resource "AppIcon.icns")
     on error number -128
         return
     end try
@@ -93,7 +93,7 @@ Hướng dẫn lấy token bot telegram:
 
 Dán mã Bot Token của bạn vào ô dưới:"
         try
-            set diagRes to (display dialog promptToken default answer preToken with title "Cài Đặt MacFileBot (Bước 1/3)" buttons {"Xem Hướng Dẫn", "Huỷ", "Tiếp tục"} default button "Tiếp tục" cancel button "Huỷ" with icon note)
+            set diagRes to (display dialog promptToken default answer preToken with title "Cài Đặt MacFileBot (Bước 1/3)" buttons {"Xem Hướng Dẫn", "Huỷ", "Tiếp tục"} default button "Tiếp tục" cancel button "Huỷ" with icon (path to resource "AppIcon.icns"))
         on error number -128
             return
         end try
@@ -121,7 +121,7 @@ Hướng dẫn lấy mã API:
 
 Dán mã Gemini Key vào ô dưới (hoặc bấm 'Bỏ qua'):"
         try
-            set diagKey to (display dialog promptGemini default answer preGemini with title "Cài Đặt MacFileBot (Bước 2/3)" buttons {"Xem Hướng Dẫn", "Bỏ qua", "Tiếp tục"} default button "Tiếp tục" with icon note)
+            set diagKey to (display dialog promptGemini default answer preGemini with title "Cài Đặt MacFileBot (Bước 2/3)" buttons {"Xem Hướng Dẫn", "Bỏ qua", "Tiếp tục"} default button "Tiếp tục" with icon (path to resource "AppIcon.icns"))
         on error number -128
             return
         end try
@@ -145,7 +145,7 @@ Dán mã Gemini Key vào ô dưới (hoặc bấm 'Bỏ qua'):"
 Dán LINK hoặc Nhập TÊN thư mục Google Drive để tự động upload.
 (Hỗ trợ cả link thư mục được chia sẻ quyền chỉnh sửa từ chủ nhân/thợ)
 
-Bấm 'Mặc định' để dùng: PRODUCTION" default answer preFolder with title "Cài Đặt MacFileBot (Bước 3/3)" buttons {"Mặc định", "Tiếp tục"} default button "Tiếp tục" with icon note)
+Bấm 'Mặc định' để dùng: PRODUCTION" default answer preFolder with title "Cài Đặt MacFileBot (Bước 3/3)" buttons {"Mặc định", "Tiếp tục"} default button "Tiếp tục" with icon (path to resource "AppIcon.icns"))
     on error number -128
         return
     end try
@@ -191,7 +191,7 @@ Trợ lý MacFileBot đã được cài sâu vào hệ thống macOS.
 2. Nhắn lệnh: /start
 (Bot sẽ phản hồi ngay lập tức!)"
 
-    set finalDlg to (display dialog successMsg with title "Cài Đặt Thành Công" buttons {"Cấp Quyền Zalo (Tuỳ chọn)", "Hoàn tất", "Mở Telegram Ngay"} default button "Mở Telegram Ngay" with icon note)
+    set finalDlg to (display dialog successMsg with title "Cài Đặt Thành Công" buttons {"Cấp Quyền Zalo (Tuỳ chọn)", "Hoàn tất", "Mở Telegram Ngay"} default button "Mở Telegram Ngay" with icon (path to resource "AppIcon.icns"))
     set finalBtn to button returned of finalDlg
     if finalBtn is "Mở Telegram Ngay" then
         open location "https://t.me/" & botUser

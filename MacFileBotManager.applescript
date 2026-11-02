@@ -52,7 +52,7 @@ Chọn thao tác bạn muốn thực hiện:"
     end if
     
     try
-        set userChoice to button returned of (display dialog menuMsg with title "MacFileBot Manager" buttons {btn1, "Kiểm Tra Lỗi", "Khởi Động Lại"} default button "Khởi Động Lại" with icon note)
+        set userChoice to button returned of (display dialog menuMsg with title "MacFileBot Manager" buttons {btn1, "Kiểm Tra Lỗi", "Khởi Động Lại"} default button "Khởi Động Lại" with icon (path to resource "AppIcon.icns"))
     on error number -128
         return
     end try
@@ -68,7 +68,7 @@ Chọn thao tác bạn muốn thực hiện:"
         "
     else if userChoice is "Khởi Động Lại" then
         do shell script quoted form of pyPath & " " & quoted form of coreScript & " --restart"
-        display dialog "✅ ĐÃ KHỞI ĐỘNG LẠI THÀNH CÔNG!" & return & return & "Dịch vụ đã được nạp lại và đang chạy ngầm 24/7." with title "Khởi Động Lại" buttons {"OK"} default button "OK" with icon note
+        display dialog "✅ ĐÃ KHỞI ĐỘNG LẠI THÀNH CÔNG!" & return & return & "Dịch vụ đã được nạp lại và đang chạy ngầm 24/7." with title "Khởi Động Lại" buttons {"OK"} default button "OK" with icon (path to resource "AppIcon.icns")
     else if userChoice is "Kiểm Tra Lỗi" then
         set kiemTraScript to do shell script "
         if [ -f " & quoted form of parentDir & "'/KiemTraLoi.command' ]; then
@@ -89,12 +89,12 @@ Chọn thao tác bạn muốn thực hiện:"
             set newFolderRes to (display dialog "☁️ ĐỔI THƯ MỤC GOOGLE DRIVE MẶC ĐỊNH
     
 Dán LINK hoặc Nhập TÊN thư mục Google Drive:
-(Hỗ trợ link thư mục được chia sẻ quyền chỉnh sửa)" default answer folderVal with title "Đổi Thư Mục Upload" buttons {"Huỷ", "Lưu"} default button "Lưu" cancel button "Huỷ" with icon note)
+(Hỗ trợ link thư mục được chia sẻ quyền chỉnh sửa)" default answer folderVal with title "Đổi Thư Mục Upload" buttons {"Huỷ", "Lưu"} default button "Lưu" cancel button "Huỷ" with icon (path to resource "AppIcon.icns"))
             set newFolder to text returned of newFolderRes
             if newFolder is not "" then
                 set changedName to do shell script quoted form of pyPath & " " & quoted form of coreScript & " --set-folder " & quoted form of newFolder
                 do shell script quoted form of pyPath & " " & quoted form of coreScript & " --restart"
-                display dialog "✅ ĐÃ ĐỔI THƯ MỤC THÀNH CÔNG!" & return & return & "Thư mục upload mới: " & changedName with title "Thành Công" buttons {"OK"} default button "OK" with icon note
+                display dialog "✅ ĐÃ ĐỔI THƯ MỤC THÀNH CÔNG!" & return & return & "Thư mục upload mới: " & changedName with title "Thành Công" buttons {"OK"} default button "OK" with icon (path to resource "AppIcon.icns")
             end if
         on error number -128
             -- Người dùng bấm Huỷ: thoát êm ái không báo lỗi
