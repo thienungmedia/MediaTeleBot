@@ -124,7 +124,7 @@ else
     echo "🔴 Dịch vụ chạy ngầm hiện ĐANG DỪNG hoặc chưa được kích hoạt."
     echo "👉 Đang kích hoạt lại dịch vụ..."
     if [ -f "$APP_DIR/install_core.py" ]; then
-        "$PYTHON_PATH" "$APP_DIR/install_core.py" --restart >/dev/null 2>&1
+        "$PYTHON_PATH" "$APP_DIR/install_core.py" --setup-service >/dev/null 2>&1
     else
         launchctl kickstart -k -p "gui/${UID_VAL}/com.macfilebot.telegrambot" 2>/dev/null
     fi
@@ -139,4 +139,46 @@ fi
 
 echo ""
 echo "=================================================================="
-read -p "Nhấn Enter để hoàn tất kiểm tra..."
+echo "🚀 TUỲ CHỌN HÀNH ĐỘNG:"
+echo "=================================================================="
+echo "1. Bấm Enter (hoặc gõ Y): CHẠY THỬ BOT TRỰC TIẾP TRÊN MÀN HÌNH NÀY"
+echo "   (Toàn bộ tin nhắn Telegram gửi đến và phản hồi sẽ in ra trực tiếp)."
+echo "2. Gõ 'P': Mở ngay màn hình Cài Đặt Trợ Năng (Accessibility) & Ổ Đĩa trên Mac"
+echo "3. Gõ 'N': Thoát công cụ kiểm tra"
+echo "=================================================================="
+read -p "Lựa chọn của bạn (Enter/P/N): " USER_ACTION
+
+if [[ "$USER_ACTION" =~ ^[Pp]$ ]]; then
+    echo "🔓 Đang mở Cài Đặt Trợ Năng & Quyền Truy Cập Đĩa trên macOS..."
+    open "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
+    open "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"
+    echo "👉 Trong Cài Đặt, bạn hãy kiểm tra và gạt BẬT (ON) cho Terminal / Python."
+    echo ""
+    read -p "Nhấn Enter để tiếp tục..."
+fi
+
+if [[ ! "$USER_ACTION" =~ ^[Nn]$ ]] && [[ ! "$USER_ACTION" =~ ^[Pp]$ ]]; then
+    # Tạm dừng service ngầm để tránh xung đột 409
+    launchctl unload "$HOME/Library/LaunchAgents/com.macfilebot.telegrambot.plist" 2>/dev/null
+    pkill -f "bot.py" 2>/dev/null
+    sleep 0.5
+    
+    echo ""
+    echo "=================================================================="
+    echo "👀 BOT ĐANG CHẠY TRỰC TIẾP (LIVE DEBUG MODE)!"
+    echo "👉 Hãy mở Telegram nhắn: /start hoặc câu lệnh bạn muốn thử."
+    echo "👉 Nhấn Ctrl + C khi muốn dừng chạy thử (bot sẽ tự kích hoạt chạy ngầm lại)."
+    echo "------------------------------------------------------------------"
+    echo ""
+    
+    restore_background() {
+        echo ""
+        echo "⚙️ Đang kích hoạt lại dịch vụ chạy ngầm 24/7..."
+        "$PYTHON_PATH" "$APP_DIR/install_core.py" --setup-service >/dev/null 2>&1
+        echo "✅ Bot đã quay trở lại chế độ chạy ngầm 24/7!"
+    }
+    trap restore_background EXIT
+    
+    cd "$APP_DIR"
+    "$PYTHON_PATH" bot.py
+fi

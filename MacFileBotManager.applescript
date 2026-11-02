@@ -56,9 +56,17 @@ on run
 
 Chọn thao tác bạn muốn thực hiện:"
     
-    set userChoice to button returned of (display dialog menuMsg with title "MacFileBot Manager" buttons {"Đổi Thư Mục", "Kiểm Tra Lỗi", "Khởi Động Lại"} default button "Khởi Động Lại" with icon note)
+    set btn1 to "Đổi Thư Mục"
+    if isRunning is not "True" then
+        set btn1 to "Mở Trợ Năng"
+    end if
     
-    if userChoice is "Khởi Động Lại" then
+    set userChoice to button returned of (display dialog menuMsg with title "MacFileBot Manager" buttons {btn1, "Kiểm Tra Lỗi", "Khởi Động Lại"} default button "Khởi Động Lại" with icon note)
+    
+    if userChoice is "Mở Trợ Năng" then
+        do shell script "open 'x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility'"
+        do shell script "open 'x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles'"
+    else if userChoice is "Khởi Động Lại" then
         do shell script quoted form of pyPath & " " & quoted form of coreScript & " --restart"
         display dialog "✅ ĐÃ KHỞI ĐỘNG LẠI THÀNH CÔNG!" & return & return & "Dịch vụ đã được nạp lại và đang chạy ngầm 24/7." with title "Khởi Động Lại" buttons {"OK"} default button "OK" with icon note
     else if userChoice is "Kiểm Tra Lỗi" then

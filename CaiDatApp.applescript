@@ -180,6 +180,23 @@ Bấm 'Mặc định' để dùng: PRODUCTION" default answer preFolder with tit
     set gdriveFolderDisplay to item 4 of resItems
     set AppleScript's text item delimiters to ""
     
+    -- 7.5 Cấp quyền Trợ Năng & Quyền truy cập đĩa (Accessibility / Full Disk Access)
+    set permMsg to "🔓 CẤP QUYỀN TRỢ NĂNG (ACCESSIBILITY) & Ổ ĐĨA
+
+Để bot có thể tìm kiếm file/footage khắp các ổ cứng ngoài và gửi tin qua Zalo:
+Hệ điều hành macOS cần bật quyền trong mục TRỢ NĂNG (Accessibility).
+
+👉 Bấm nút 'Mở Trợ Năng' bên dưới để mở ngay trang Cài Đặt Trợ Năng trên máy Mac của bạn (gạt BẬT cho Terminal / Python)."
+    try
+        set diagPerm to (display dialog permMsg with title "Cấp Quyền Trợ Năng macOS" buttons {"Để Sau", "Mở Trợ Năng"} default button "Mở Trợ Năng" with icon note)
+        if button returned of diagPerm is "Mở Trợ Năng" then
+            do shell script "open 'x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility'"
+            do shell script "open 'x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles'"
+        end if
+    on error number -128
+        -- Bỏ qua nếu bấm Huỷ
+    end try
+
     -- 8. Thông báo thành công
     set successMsg to "🎉 CHÚC MỪNG! ĐÃ CÀI ĐẶT THÀNH CÔNG!
 
