@@ -46,31 +46,58 @@ Nhấn 'Tiếp tục' để bắt đầu thiết lập nhanh trong 1 phút."
     
     display dialog welcomeMsg with title "Cài Đặt MacFileBot" buttons {"Huỷ", "Tiếp tục"} default button "Tiếp tục" with icon note
     
+    set htmlGuide to parentDir & "/HuongDanLayMa.html"
+    set htmlTokenUrl to "file://" & htmlGuide & "#telegram"
+    set htmlGeminiUrl to "file://" & htmlGuide & "#gemini"
+    
     -- 3. Nhập Bot Token
     set botToken to ""
     repeat while botToken is ""
-        set diagRes to (display dialog "📋 BƯỚC 1/3: NHẬP MÃ BOT TOKEN TELEGRAM
+        set promptToken to "📋 BƯỚC 1/3: DÁN MÃ BOT TOKEN TELEGRAM
 
-(Tạo miễn phí trong 30 giây bằng cách chat /newbot với @BotFather trên Telegram).
-Ví dụ: 123456789:ABCdef-GHIjkl...
+Hướng dẫn lấy token bot telegram:
+👉 " & htmlTokenUrl & "
 
-Dán mã Bot Token của bạn vào ô dưới:" default answer "" with title "Cài Đặt MacFileBot (Bước 1/3)" buttons {"Huỷ", "Tiếp tục"} default button "Tiếp tục" with icon note)
-        set botToken to text returned of diagRes
-        set botToken to do shell script "echo " & quoted form of botToken & " | tr -d '[:space:]'"
-        if botToken is "" then
-            display alert "⚠️ Bạn chưa nhập mã Bot Token!" message "Bot Token là bắt buộc để kết nối với Telegram." as warning
+(Hoặc bấm nút [Xem Hướng Dẫn] bên dưới để mở ảnh & các bước chi tiết)
+
+Dán mã Bot Token của bạn vào ô dưới:"
+        set diagRes to (display dialog promptToken default answer "" with title "Cài Đặt MacFileBot (Bước 1/3)" buttons {"Xem Hướng Dẫn", "Huỷ", "Tiếp tục"} default button "Tiếp tục" with icon note)
+        set clickedBtn to button returned of diagRes
+        if clickedBtn is "Xem Hướng Dẫn" then
+            open location htmlTokenUrl
+        else
+            set botToken to text returned of diagRes
+            set botToken to do shell script "echo " & quoted form of botToken & " | tr -d '[:space:]'"
+            if botToken is "" then
+                display alert "⚠️ Bạn chưa nhập mã Bot Token!" message "Bot Token là bắt buộc để kết nối với Telegram." as warning
+            end if
         end if
     end repeat
     
     -- 4. Nhập Gemini API Key
-    set diagKey to (display dialog "🤖 BƯỚC 2/3: GEMINI API KEY (TÙY CHỌN)
+    set geminiKey to ""
+    repeat
+        set promptGemini to "🤖 BƯỚC 2/3: DÁN MÃ GEMINI API KEY (TÙY CHỌN)
 
-Giúp bot hiểu câu nói tiếng Việt tự nhiên không cần đúng cú pháp.
-(Lấy miễn phí tại: https://aistudio.google.com/apikey)
+Hướng dẫn lấy mã API:
+👉 " & htmlGeminiUrl & "
 
-Dán mã Gemini Key (hoặc bấm 'Bỏ qua' nếu chưa có):" default answer "" with title "Cài Đặt MacFileBot (Bước 2/3)" buttons {"Bỏ qua", "Tiếp tục"} default button "Tiếp tục" with icon note)
-    set geminiKey to text returned of diagKey
-    set geminiKey to do shell script "echo " & quoted form of geminiKey & " | tr -d '[:space:]'"
+(Hoặc bấm nút [Xem Hướng Dẫn] bên dưới để mở trang lấy mã)
+
+Dán mã Gemini Key vào ô dưới (hoặc bấm 'Bỏ qua'):"
+        set diagKey to (display dialog promptGemini default answer "" with title "Cài Đặt MacFileBot (Bước 2/3)" buttons {"Xem Hướng Dẫn", "Bỏ qua", "Tiếp tục"} default button "Tiếp tục" with icon note)
+        set clickedKeyBtn to button returned of diagKey
+        if clickedKeyBtn is "Xem Hướng Dẫn" then
+            open location htmlGeminiUrl
+        else if clickedKeyBtn is "Bỏ qua" then
+            set geminiKey to ""
+            exit repeat
+        else
+            set geminiKey to text returned of diagKey
+            set geminiKey to do shell script "echo " & quoted form of geminiKey & " | tr -d '[:space:]'"
+            exit repeat
+        end if
+    end repeat
     
     -- 5. Nhập Google Drive Folder
     set diagFolder to (display dialog "☁️ BƯỚC 3/3: THƯ MỤC GOOGLE DRIVE MẶC ĐỊNH

@@ -49,6 +49,7 @@ REQUIRED_FILES = [
     "CapNhat.command",
     "GoCaiDat.command",
     "KiemTraLoi.command",
+    "HuongDanLayMa.html",
 ]
 
 

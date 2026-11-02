@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hướng Dẫn Lấy Token Bot Telegram & Gemini API Key - MacFileBot</title>
+  <style>
+    :root {
+      --primary: #0071e3;
+      --primary-hover: #0077ed;
+      --bg: #f5f5f7;
+      --card-bg: #ffffff;
+      --text: #1d1d1f;
+      --text-secondary: #86868b;
+      --border: #d2d2d7;
+      --success: #34c759;
+      --code-bg: #f2f2f7;
+      --highlight: #ff9500;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #000000;
+        --card-bg: #1c1c1e;
+        --text: #f5f5f7;
+        --text-secondary: #a1a1a6;
+        --border: #38383a;
+        --code-bg: #2c2c2e;
+      }
+    }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      padding: 24px 16px 60px;
+    }
+    .container {
+      max-width: 780px;
+      margin: 0 auto;
+    }
+    header {
+      text-align: center;
+      margin-bottom: 36px;
+      padding: 20px 0;
+    }
+    .badge {
+      display: inline-block;
+      background: rgba(0, 113, 227, 0.12);
+      color: var(--primary);
+      font-size: 13px;
+      font-weight: 600;
+      padding: 6px 14px;
+      border-radius: 20px;
+      margin-bottom: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    h1 {
+      font-size: 32px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      margin-bottom: 8px;
+    }
+    .subtitle {
+      font-size: 16px;
+      color: var(--text-secondary);
+    }
+    .nav-tabs {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 28px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+    .nav-btn {
+      background: var(--card-bg);
+      color: var(--text);
+      border: 1px solid var(--border);
+      padding: 10px 20px;
+      border-radius: 12px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      transition: all 0.2s ease;
+    }
+    .nav-btn:hover {
+      border-color: var(--primary);
+      color: var(--primary);
+      transform: translateY(-1px);
+    }
+    .section-card {
+      background: var(--card-bg);
+      border-radius: 18px;
+      border: 1px solid var(--border);
+      padding: 32px 28px;
+      margin-bottom: 32px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.04);
+      scroll-margin-top: 20px;
+    }
+    .section-header {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 20px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 16px;
+    }
+    .section-icon {
+      font-size: 28px;
+      width: 48px;
+      height: 48px;
+      background: var(--code-bg);
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    h2 {
+      font-size: 22px;
+      font-weight: 700;
+    }
+    .section-desc {
+      color: var(--text-secondary);
+      font-size: 14px;
+      margin-top: 2px;
+    }
+    .step-list {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+    .step-item {
+      display: flex;
+      gap: 16px;
+    }
+    .step-num {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: var(--primary);
+      color: white;
+      font-weight: 700;
+      font-size: 15px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+    .step-content {
+      flex: 1;
+    }
+    .step-title {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+    .step-text {
+      color: var(--text-secondary);
+      font-size: 14px;
+      margin-bottom: 10px;
+    }
+    .code-box {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 14px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 6px;
+      word-break: break-all;
+    }
+    .copy-btn {
+      background: var(--primary);
+      color: white;
+      border: none;
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      margin-left: 10px;
+      flex-shrink: 0;
+      transition: background 0.2s;
+    }
+    .copy-btn:hover {
+      background: var(--primary-hover);
+    }
+    .btn-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--primary);
+      color: white;
+      text-decoration: none;
+      padding: 9px 18px;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 600;
+      margin-top: 6px;
+      transition: all 0.2s;
+    }
+    .btn-link:hover {
+      background: var(--primary-hover);
+      transform: translateY(-1px);
+    }
+    .callout {
+      background: rgba(255, 149, 0, 0.1);
+      border-left: 4px solid var(--highlight);
+      padding: 14px 16px;
+      border-radius: 0 10px 10px 0;
+      margin-top: 18px;
+      font-size: 14px;
+    }
+    .callout-title {
+      font-weight: 700;
+      color: var(--highlight);
+      margin-bottom: 4px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .callout-success {
+      background: rgba(52, 199, 89, 0.1);
+      border-left-color: var(--success);
+    }
+    .callout-success .callout-title {
+      color: var(--success);
+    }
+    footer {
+      text-align: center;
+      color: var(--text-secondary);
+      font-size: 13px;
+      margin-top: 40px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <span class="badge">Tài Liệu Hướng Dẫn</span>
+      <h1>Lấy Mã Cài Đặt MacFileBot</h1>
+      <p class="subtitle">Xem hướng dẫn chi tiết từng bước để lấy Token Bot Telegram và Gemini API Key miễn phí</p>
+    </header>
+
+    <div class="nav-tabs">
+      <a href="#telegram" class="nav-btn">
+        <span>💬</span> 1. Token Bot Telegram (Bắt buộc)
+      </a>
+      <a href="#gemini" class="nav-btn">
+        <span>🤖</span> 2. Gemini API Key (Tùy chọn)
+      </a>
+    </div>
+
+    <!-- PHẦN 1: TELEGRAM BOT TOKEN -->
+    <section class="section-card" id="telegram">
+      <div class="section-header">
+        <div class="section-icon">💬</div>
+        <div>
+          <h2>1. Hướng Dẫn Lấy Token Bot Telegram</h2>
+          <p class="section-desc">Mỗi máy Mac cần 1 con bot riêng • Miễn phí 100% • Mất khoảng 30 giây</p>
+        </div>
+      </div>
+
+      <div class="step-list">
+        <div class="step-item">
+          <div class="step-num">1</div>
+          <div class="step-content">
+            <div class="step-title">Mở cuộc trò chuyện với @BotFather trên Telegram</div>
+            <p class="step-text">Bấm vào nút dưới để mở trực tiếp ứng dụng Telegram (hoặc tìm kiếm từ khoá <b>@BotFather</b> có tích xanh):</p>
+            <a href="https://t.me/BotFather" target="_blank" class="btn-link">
+              <span>👉</span> Mở Chat Với @BotFather
+            </a>
+          </div>
+        </div>
+
+        <div class="step-item">
+          <div class="step-num">2</div>
+          <div class="step-content">
+            <div class="step-title">Tạo bot mới bằng lệnh /newbot</div>
+            <p class="step-text">Bấm <b>START</b> hoặc gửi tin nhắn lệnh bên dưới cho @BotFather:</p>
+            <div class="code-box">
+              <span>/newbot</span>
+              <button class="copy-btn" onclick="copyText('/newbot', this)">Sao chép</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="step-item">
+          <div class="step-num">3</div>
+          <div class="step-content">
+            <div class="step-title">Đặt tên hiển thị cho Bot</div>
+            <p class="step-text">BotFather sẽ hỏi: <i>"Alright, a new bot. How are we going to call it? Please choose a name for your bot."</i></p>
+            <p class="step-text">Gửi một tên bất kỳ cho bot của bạn (ví dụ: <b>Tho Mac Bot</b> hoặc <b>Tro Ly May 1</b>).</p>
+          </div>
+        </div>
+
+        <div class="step-item">
+          <div class="step-num">4</div>
+          <div class="step-content">
+            <div class="step-title">Đặt Username kết thúc bằng đuôi "bot"</div>
+            <p class="step-text">BotFather sẽ hỏi tiếp: <i>"Good. Now let's choose a username for your bot. It must end in 'bot'..."</i></p>
+            <p class="step-text">Nhập username viết liền không dấu, kết thúc bằng chữ <b>bot</b> (ví dụ: <code>thomac123_bot</code> hoặc <code>trolyfile_bot</code>).</p>
+          </div>
+        </div>
+
+        <div class="step-item">
+          <div class="step-num">5</div>
+          <div class="step-content">
+            <div class="step-title">Nhận và sao chép mã HTTP API Token</div>
+            <p class="step-text">BotFather sẽ gửi thông báo chúc mừng kèm đoạn mã Token màu đỏ/xanh dạng:</p>
+            <div class="code-box">
+              <span>1234567890:AAH_ABCdef123456789...</span>
+            </div>
+            <p class="step-text" style="margin-top: 8px;">Nhấn vào đoạn mã đó để sao chép vào bộ nhớ tạm.</p>
+          </div>
+        </div>
+
+        <div class="step-item">
+          <div class="step-num">6</div>
+          <div class="step-content">
+            <div class="step-title">Dán mã Token vào cửa sổ cài đặt</div>
+            <p class="step-text">Quay lại ứng dụng <b>Cài Đặt MacFileBot</b> và dán đoạn mã vừa sao chép vào ô yêu cầu, sau đó bấm <b>Tiếp tục</b>.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="callout">
+        <div class="callout-title">⚠️ Lưu ý quan trọng về bảo mật:</div>
+        Mỗi máy Mac phải dùng một con bot riêng. KHÔNG dùng chung token của người khác vì bot được khoá độc quyền cho chủ nhân đầu tiên gửi <code>/start</code>.
+      </div>
+    </section>
+
+    <!-- PHẦN 2: GEMINI API KEY -->
+    <section class="section-card" id="gemini">
+      <div class="section-header">
+        <div class="section-icon">🤖</div>
+        <div>
+          <h2>2. Hướng Dẫn Lấy Gemini API Key</h2>
+          <p class="section-desc">Tùy chọn • Giúp bot hiểu câu nói tiếng Việt tự nhiên không cần đúng cú pháp</p>
+        </div>
+      </div>
+
+      <div class="step-list">
+        <div class="step-item">
+          <div class="step-num">1</div>
+          <div class="step-content">
+            <div class="step-title">Truy cập Google AI Studio</div>
+            <p class="step-text">Bấm vào nút dưới để mở trang quản lý API Key của Google:</p>
+            <a href="https://aistudio.google.com/apikey" target="_blank" class="btn-link">
+              <span>👉</span> Mở Google AI Studio (API Key)
+            </a>
+          </div>
+        </div>
+
+        <div class="step-item">
+          <div class="step-num">2</div>
+          <div class="step-content">
+            <div class="step-title">Đăng nhập tài khoản Google</div>
+            <p class="step-text">Sử dụng tài khoản Gmail thông thường của bạn để đăng nhập.</p>
+          </div>
+        </div>
+
+        <div class="step-item">
+          <div class="step-num">3</div>
+          <div class="step-content">
+            <div class="step-title">Bấm nút "Create API key" (Tạo khoá API)</div>
+            <p class="step-text">Tại góc trên bên phải màn hình, nhấn vào nút xanh có chữ <b>Create API key</b>.</p>
+          </div>
+        </div>
+
+        <div class="step-item">
+          <div class="step-num">4</div>
+          <div class="step-content">
+            <div class="step-title">Chọn dự án và tạo mã</div>
+            <p class="step-text">Chọn <b>"Create API key in new project"</b> (hoặc chọn dự án có sẵn) rồi nhấn xác nhận.</p>
+          </div>
+        </div>
+
+        <div class="step-item">
+          <div class="step-num">5</div>
+          <div class="step-content">
+            <div class="step-title">Sao chép mã API và dán vào bộ cài</div>
+            <p class="step-text">Một cửa sổ hiện ra chứa đoạn mã bắt đầu bằng <code>AIzaSy...</code>. Bấm <b>Copy</b> và dán vào ô Bước 2 của ứng dụng cài đặt.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="callout callout-success">
+        <div class="callout-title">💡 Gợi ý:</div>
+        Mã Gemini API hoàn toàn miễn phí cho nhu cầu cá nhân. Nếu hiện tại bạn chưa có, bạn có thể bấm <b>"Bỏ qua"</b> khi cài đặt, bot vẫn hoạt động đầy đủ mọi tính năng tìm kiếm, upload và quản lý file!
+      </div>
+    </section>
+
+    <footer>
+      <p>MacFileBot - Trợ Lý Quản Lý File Mac Native 24/7 • Thiên Ưng Media</p>
+    </footer>
+  </div>
+
+  <script>
+    function copyText(text, btn) {
+      navigator.clipboard.writeText(text).then(() => {
+        const originalText = btn.innerText;
+        btn.innerText = "✓ Đã chép";
+        btn.style.background = "#34c759";
+        setTimeout(() => {
+          btn.innerText = originalText;
+          btn.style.background = "";
+        }, 2000);
+      });
+    }
+  </script>
+</body>
+</html>

@@ -51,11 +51,15 @@ echo "✅ Đã tìm thấy Python: $PYTHON_PATH"
 echo ""
 
 # 2. Nhập cấu hình
+GUIDE_FILE="$(pwd)/HuongDanLayMa.html"
+GUIDE_URL_TOKEN="file://${GUIDE_FILE}#telegram"
+GUIDE_URL_GEMINI="file://${GUIDE_FILE}#gemini"
+
 echo "------------------------------------------------------------------"
 echo "📋 BƯỚC 1: CẤU HÌNH BOT TELEGRAM"
-echo "⚠️ LƯU Ý QUAN TRỌNG: Mỗi người/máy Mac PHẢI dùng 1 con Bot riêng!"
-echo "   (Tạo miễn phí trong 30 giây bằng cách chat /newbot với @BotFather)"
-echo "   KHÔNG dùng chung Token của người khác vì sẽ bị khoá bảo mật."
+echo "Hướng dẫn lấy token bot telegram:"
+echo "👉 $GUIDE_URL_TOKEN"
+echo "(Giữ phím Command ⌘ và click vào link trên để xem hướng dẫn chi tiết)"
 echo "------------------------------------------------------------------"
 
 EXISTING_TOKEN=""
@@ -107,7 +111,9 @@ done
 echo ""
 echo "------------------------------------------------------------------"
 echo "🤖 BƯỚC 2: CẤU HÌNH AI GEMINI (TÙY CHỌN)"
-echo "(Giúp bot hiểu câu nói tiếng Việt tự nhiên không cần đúng cú pháp)"
+echo "Hướng dẫn lấy mã API:"
+echo "👉 $GUIDE_URL_GEMINI"
+echo "(Giữ phím Command ⌘ và click vào link trên để xem hướng dẫn chi tiết)"
 echo "------------------------------------------------------------------"
 PROMPT_KEY="Nhập Gemini API Key (Enter để bỏ qua nếu chưa có)"
 if [ -n "$EXISTING_KEY" ]; then
