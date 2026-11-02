@@ -53,7 +53,9 @@ cp -R "/Library/Application Support/MacFileBot/"* "$USER_TARGET_DIR/" 2>/dev/nul
 chown -R "$CONSOLE_USER":staff "$USER_TARGET_DIR"
 chmod -R 755 "$USER_TARGET_DIR"
 
-# Xoá quarantine
+# Xoá quarantine và cấp quyền sở hữu cho user trên /Applications
+chown -R "$CONSOLE_USER":staff "/Applications/Cài Đặt MacFileBot.app" "/Applications/MacFileBot Manager.app" 2>/dev/null || true
+chmod -R 755 "/Applications/Cài Đặt MacFileBot.app" "/Applications/MacFileBot Manager.app" 2>/dev/null || true
 xattr -dr com.apple.quarantine "/Applications/Cài Đặt MacFileBot.app" 2>/dev/null || true
 xattr -dr com.apple.quarantine "/Applications/MacFileBot Manager.app" 2>/dev/null || true
 xattr -dr com.apple.quarantine "$USER_TARGET_DIR" 2>/dev/null || true
@@ -65,10 +67,10 @@ if [ -f "$CONSOLE_HOME/.gemini/antigravity/scratch/telegram-file-manager/config.
     chmod 600 "$USER_TARGET_DIR/config.json"
 fi
 
-# Tạo biểu tượng ngoài Desktop để người dùng dễ thấy và bấm mở
+# Tạo biểu tượng ngoài Desktop bằng ditto (ghi đè sạch bundle không lồng thư mục)
 if [ -d "$CONSOLE_HOME/Desktop" ]; then
-    cp -R "/Applications/Cài Đặt MacFileBot.app" "$CONSOLE_HOME/Desktop/" 2>/dev/null || true
-    cp -R "/Applications/MacFileBot Manager.app" "$CONSOLE_HOME/Desktop/" 2>/dev/null || true
+    /usr/bin/ditto "/Applications/Cài Đặt MacFileBot.app" "$CONSOLE_HOME/Desktop/Cài Đặt MacFileBot.app" 2>/dev/null || true
+    /usr/bin/ditto "/Applications/MacFileBot Manager.app" "$CONSOLE_HOME/Desktop/MacFileBot Manager.app" 2>/dev/null || true
     cp "$USER_TARGET_DIR/KiemTraLoi.command" "$CONSOLE_HOME/Desktop/Kiểm Tra Lỗi Bot.command" 2>/dev/null || true
     chmod +x "$CONSOLE_HOME/Desktop/Kiểm Tra Lỗi Bot.command" 2>/dev/null || true
     chown -R "$CONSOLE_USER":staff "$CONSOLE_HOME/Desktop/Cài Đặt MacFileBot.app" "$CONSOLE_HOME/Desktop/MacFileBot Manager.app" "$CONSOLE_HOME/Desktop/Kiểm Tra Lỗi Bot.command" 2>/dev/null || true
