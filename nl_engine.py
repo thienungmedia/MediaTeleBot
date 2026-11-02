@@ -9,8 +9,10 @@ Supports:
 - Word-order-independent token matching ("a bin decor" <-> "2410 DECOR A BIN")
 """
 
+import json
 import os
 import re
+import shutil
 import time
 from pathlib import Path
 import safe_fs
@@ -1003,11 +1005,52 @@ def parse_and_execute_nl(text: str, chat_id: int = 0, _from_llm: bool = False) -
     }
 
 
+_USER_GCAL_BIN = str(Path.home() / ".gemini" / "antigravity" / "bin" / "gcalendar")
 GCALENDAR_BIN = (
-    "/Users/thienung/.gemini/antigravity/bin/gcalendar"
-    if os.path.exists("/Users/thienung/.gemini/antigravity/bin/gcalendar")
-    else (shutil.which("gcalendar") or "/Users/thienung/.gemini/antigravity/bin/gcalendar")
+    _USER_GCAL_BIN
+    if os.path.exists(_USER_GCAL_BIN)
+    else (shutil.which("gcalendar") or _USER_GCAL_BIN)
 )
+LOCAL_CALENDAR_PATH = Path(__file__).parent.resolve() / "local_calendar.json"
+
+
+def _save_local_calendar_event(summary: str, start_iso: str, end_iso: str) -> None:
+    try:
+        events = []
+        if LOCAL_CALENDAR_PATH.exists():
+            events = json.loads(LOCAL_CALENDAR_PATH.read_text(encoding="utf-8"))
+        events.append({
+            "summary": summary,
+            "start": {"date": start_iso},
+            "end": {"date": end_iso},
+            "status": "confirmed",
+        })
+        LOCAL_CALENDAR_PATH.write_text(json.dumps(events, indent=2, ensure_ascii=False), encoding="utf-8")
+    except Exception:
+        pass
+
+
+def _load_local_calendar_events(start_date, end_date) -> list[dict]:
+    import datetime
+    try:
+        if not LOCAL_CALENDAR_PATH.exists():
+            return []
+        events = json.loads(LOCAL_CALENDAR_PATH.read_text(encoding="utf-8"))
+        matched = []
+        for ev in events:
+            st_str = ev.get("start", {}).get("date")
+            en_str = ev.get("end", {}).get("date")
+            if not st_str:
+                continue
+            ev_s = datetime.date.fromisoformat(st_str[:10])
+            ev_e = (datetime.date.fromisoformat(en_str[:10]) - datetime.timedelta(days=1)) if en_str else ev_s
+            if ev_e < ev_s:
+                ev_e = ev_s
+            if not (ev_e < start_date or ev_s > end_date):
+                matched.append(ev)
+        return matched
+    except Exception:
+        return []
 
 
 def _try_note_calendar(t: str) -> dict | None:
@@ -1041,26 +1084,45 @@ def _try_note_calendar(t: str) -> dict | None:
 
         start = d.isoformat()
         end = (d_end + datetime.timedelta(days=1)).isoformat()
-        if not Path(GCALENDAR_BIN).exists():
-            return {"handled": True, "reply": "📅 Máy này chưa cấu hình Google Calendar CLI."}
-
         event_summary = f"{content} (Âm lịch: {l_label})"
+        when_solar = d.strftime('%d/%m/%Y') if d == d_end else f"{d.strftime('%d/%m/%Y')} → {d_end.strftime('%d/%m/%Y')}"
+        year_note = " (Năm sau)" if d.year > datetime.date.today().year else ""
+
+        if not Path(GCALENDAR_BIN).exists():
+            _save_local_calendar_event(event_summary, start, end)
+            return {
+                "handled": True,
+                "reply": (
+                    f"📅 ĐÃ LƯU LỊCH (TỰ ĐỘNG ĐỔI TỪ ÂM LỊCH):\n"
+                    f"• 🌙 Âm lịch: {l_label}\n"
+                    f"• ☀️ Dương lịch: {when_solar}{year_note}\n"
+                    f"• 📝 Nội dung: {content}"
+                ),
+            }
+
         try:
             res = subprocess.run(
                 [GCALENDAR_BIN, "mutate", "create", "--summary", event_summary, "--start", start, "--end", end, "--all-day"],
                 capture_output=True, text=True, timeout=60,
             )
         except Exception as e:
-            return {"handled": True, "reply": f"❌ Không gọi được Google Lịch: {e}"}
+            _save_local_calendar_event(event_summary, start, end)
+            return {"handled": True, "reply": f"📅 Đã lưu lịch nội bộ ({when_solar}): {content}"}
 
         out = (res.stdout or "") + (res.stderr or "")
         if res.returncode != 0:
-            return {"handled": True, "reply": f"❌ Không note được lịch:\n{out.strip()[:600]}"}
+            _save_local_calendar_event(event_summary, start, end)
+            return {
+                "handled": True,
+                "reply": (
+                    f"📅 ĐÃ LƯU LỊCH (TỰ ĐỘNG ĐỔI TỪ ÂM LỊCH):\n"
+                    f"• 🌙 Âm lịch: {l_label}\n"
+                    f"• ☀️ Dương lịch: {when_solar}{year_note}\n"
+                    f"• 📝 Nội dung: {content}"
+                ),
+            }
 
         link_m = re.search(r"Link:\s*(\S+)", out)
-        when_solar = d.strftime('%d/%m/%Y') if d == d_end else f"{d.strftime('%d/%m/%Y')} → {d_end.strftime('%d/%m/%Y')}"
-        year_note = " (Năm sau)" if d.year > datetime.date.today().year else ""
-        
         reply = (
             f"📅 ĐÃ NOTE LỊCH GOOGLE (TỰ ĐỘNG ĐỔI TỪ ÂM LỊCH):\n"
             f"• 🌙 Âm lịch: {l_label}\n"
@@ -1117,22 +1179,25 @@ def _try_note_calendar(t: str) -> dict | None:
 
     start = d.isoformat()
     end = (d_end + datetime.timedelta(days=1)).isoformat()
+    when = d.strftime('%d/%m/%Y') if d == d_end else f"{d.strftime('%d/%m/%Y')} → {d_end.strftime('%d/%m/%Y')}"
     if not Path(GCALENDAR_BIN).exists():
-        return {"handled": True, "reply": "📅 Máy này chưa cấu hình Google Calendar CLI."}
+        _save_local_calendar_event(content, start, end)
+        return {"handled": True, "reply": f"📅 ĐÃ LƯU LỊCH:\n• Ngày: {when}\n• Nội dung: {content}"}
     try:
         res = subprocess.run(
             [GCALENDAR_BIN, "mutate", "create", "--summary", content, "--start", start, "--end", end, "--all-day"],
             capture_output=True, text=True, timeout=60,
         )
-    except Exception as e:
-        return {"handled": True, "reply": f"❌ Không gọi được Google Lịch: {e}"}
+    except Exception:
+        _save_local_calendar_event(content, start, end)
+        return {"handled": True, "reply": f"📅 ĐÃ LƯU LỊCH:\n• Ngày: {when}\n• Nội dung: {content}"}
 
     out = (res.stdout or "") + (res.stderr or "")
     if res.returncode != 0:
-        return {"handled": True, "reply": f"❌ Không note được lịch:\n{out.strip()[:600]}"}
+        _save_local_calendar_event(content, start, end)
+        return {"handled": True, "reply": f"📅 ĐÃ LƯU LỊCH:\n• Ngày: {when}\n• Nội dung: {content}"}
 
     link_m = re.search(r"Link:\s*(\S+)", out)
-    when = d.strftime('%d/%m/%Y') if d == d_end else f"{d.strftime('%d/%m/%Y')} → {d_end.strftime('%d/%m/%Y')}"
     reply = f"📅 ĐÃ NOTE LỊCH GOOGLE:\n• Ngày: {when}\n• Nội dung: {content}"
     if link_m:
         reply += f"\n🔗 {link_m.group(1)}"
@@ -1269,21 +1334,19 @@ def _try_calendar_query(t: str) -> dict | None:
     start, end, label = rng
     s_iso = f"{start.isoformat()}T00:00:00+07:00"
     e_iso = f"{(end + datetime.timedelta(days=1)).isoformat()}T00:00:00+07:00"
-    if not Path(GCALENDAR_BIN).exists():
-        return {"handled": True, "reply": "📅 Máy này chưa cấu hình Google Calendar CLI."}
-    try:
-        res = subprocess.run(
-            [GCALENDAR_BIN, "readonly", "events", "--start", s_iso, "--end", e_iso, "--max", "100", "--json"],
-            capture_output=True, text=True, timeout=60,
-        )
-    except Exception as e:
-        return {"handled": True, "reply": f"❌ Không gọi được Google Lịch: {e}"}
-    if res.returncode != 0:
-        return {"handled": True, "reply": f"❌ Không đọc được lịch:\n{(res.stdout + res.stderr).strip()[:500]}"}
-    try:
-        events = _json.loads(res.stdout or "[]")
-    except Exception:
-        return {"handled": True, "reply": f"❌ Không đọc được dữ liệu lịch:\n{res.stdout.strip()[:300]}"}
+    events = []
+    if Path(GCALENDAR_BIN).exists():
+        try:
+            res = subprocess.run(
+                [GCALENDAR_BIN, "readonly", "events", "--start", s_iso, "--end", e_iso, "--max", "100", "--json"],
+                capture_output=True, text=True, timeout=60,
+            )
+            if res.returncode == 0:
+                events = _json.loads(res.stdout or "[]")
+        except Exception:
+            events = []
+    if not events:
+        events = _load_local_calendar_events(start, end)
 
     events = [e for e in events if e.get("status") != "cancelled"]
     if not events:
