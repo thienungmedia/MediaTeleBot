@@ -50,6 +50,51 @@ Nhấn 'Tiếp tục' để bắt đầu thiết lập nhanh trong 1 phút."
     set htmlTokenUrl to "file://" & htmlGuide & "#telegram"
     set htmlGeminiUrl to "file://" & htmlGuide & "#gemini"
     
+    -- 2.5 Đọc thông tin cấu hình cũ nếu có (để tự điền sẵn)
+    set preToken to ""
+    set preGemini to ""
+    set preFolder to "PRODUCTION"
+    try
+        set preToken to do shell script quoted form of pyPath & " -c \"
+import json, os
+for p in [os.path.expanduser('~/Library/Application Support/MacFileBot/config.json'), os.path.expanduser('~/.gemini/antigravity/scratch/telegram-file-manager/config.json'), '" & parentDir & "/config.json']:
+    if os.path.exists(p):
+        try:
+            t = json.load(open(p)).get('bot_token', '')
+            if t:
+                print(t)
+                break
+        except: pass
+\""
+    end try
+    try
+        set preGemini to do shell script quoted form of pyPath & " -c \"
+import json, os
+for p in [os.path.expanduser('~/Library/Application Support/MacFileBot/config.json'), os.path.expanduser('~/.gemini/antigravity/scratch/telegram-file-manager/config.json'), '" & parentDir & "/config.json']:
+    if os.path.exists(p):
+        try:
+            k = json.load(open(p)).get('gemini_api_key', '')
+            if k:
+                print(k)
+                break
+        except: pass
+\""
+    end try
+    try
+        set preFolder to do shell script quoted form of pyPath & " -c \"
+import json, os
+for p in [os.path.expanduser('~/Library/Application Support/MacFileBot/config.json'), os.path.expanduser('~/.gemini/antigravity/scratch/telegram-file-manager/config.json'), '" & parentDir & "/config.json']:
+    if os.path.exists(p):
+        try:
+            f = json.load(open(p)).get('default_gdrive_folder', '')
+            if f:
+                print(f)
+                break
+        except: pass
+\""
+        if preFolder is "" then set preFolder to "PRODUCTION"
+    end try
+
     -- 3. Nhập Bot Token
     set botToken to ""
     repeat while botToken is ""
@@ -61,7 +106,7 @@ Hướng dẫn lấy token bot telegram:
 (Hoặc bấm nút [Xem Hướng Dẫn] bên dưới để mở ảnh & các bước chi tiết)
 
 Dán mã Bot Token của bạn vào ô dưới:"
-        set diagRes to (display dialog promptToken default answer "" with title "Cài Đặt MacFileBot (Bước 1/3)" buttons {"Xem Hướng Dẫn", "Huỷ", "Tiếp tục"} default button "Tiếp tục" with icon note)
+        set diagRes to (display dialog promptToken default answer preToken with title "Cài Đặt MacFileBot (Bước 1/3)" buttons {"Xem Hướng Dẫn", "Huỷ", "Tiếp tục"} default button "Tiếp tục" with icon note)
         set clickedBtn to button returned of diagRes
         if clickedBtn is "Xem Hướng Dẫn" then
             open location htmlTokenUrl
@@ -85,7 +130,7 @@ Hướng dẫn lấy mã API:
 (Hoặc bấm nút [Xem Hướng Dẫn] bên dưới để mở trang lấy mã)
 
 Dán mã Gemini Key vào ô dưới (hoặc bấm 'Bỏ qua'):"
-        set diagKey to (display dialog promptGemini default answer "" with title "Cài Đặt MacFileBot (Bước 2/3)" buttons {"Xem Hướng Dẫn", "Bỏ qua", "Tiếp tục"} default button "Tiếp tục" with icon note)
+        set diagKey to (display dialog promptGemini default answer preGemini with title "Cài Đặt MacFileBot (Bước 2/3)" buttons {"Xem Hướng Dẫn", "Bỏ qua", "Tiếp tục"} default button "Tiếp tục" with icon note)
         set clickedKeyBtn to button returned of diagKey
         if clickedKeyBtn is "Xem Hướng Dẫn" then
             open location htmlGeminiUrl
@@ -105,7 +150,7 @@ Dán mã Gemini Key vào ô dưới (hoặc bấm 'Bỏ qua'):"
 Dán LINK hoặc Nhập TÊN thư mục Google Drive để tự động upload.
 (Hỗ trợ cả link thư mục được chia sẻ quyền chỉnh sửa từ chủ nhân/thợ)
 
-Bấm 'Mặc định' để dùng: PRODUCTION" default answer "PRODUCTION" with title "Cài Đặt MacFileBot (Bước 3/3)" buttons {"Mặc định", "Tiếp tục"} default button "Tiếp tục" with icon note)
+Bấm 'Mặc định' để dùng: PRODUCTION" default answer preFolder with title "Cài Đặt MacFileBot (Bước 3/3)" buttons {"Mặc định", "Tiếp tục"} default button "Tiếp tục" with icon note)
     set gdriveFolder to text returned of diagFolder
     if gdriveFolder is "" then
         set gdriveFolder to "PRODUCTION"

@@ -121,20 +121,32 @@ def install(bot_token: str, gemini_key: str = "", gdrive_folder: str = "PRODUCTI
     # Xoá cờ kiểm duyệt bảo mật của macOS tại thư mục đích
     subprocess.run(["/usr/bin/xattr", "-dr", "com.apple.quarantine", str(TARGET_DIR)], capture_output=True)
 
-    # 4. Ghi file config.json tại TARGET_DIR
-    sys.path.insert(0, str(TARGET_DIR))
-    try:
-        import safe_fs
-        cfg = safe_fs._read_json(TARGET_DIR / "config.json")
-    except Exception:
-        cfg = {}
+    # 4. Ghi file config.json tại TARGET_DIR (bảo toàn owner_id và chat_id cũ nếu có)
+    cfg = {}
+    cfg_target = TARGET_DIR / "config.json"
+    if cfg_target.exists():
+        try:
+            cfg = json.loads(cfg_target.read_text(encoding="utf-8"))
+        except Exception:
+            cfg = {}
+    elif (Path.home() / ".gemini/antigravity/scratch/telegram-file-manager/config.json").exists():
+        try:
+            cfg = json.loads((Path.home() / ".gemini/antigravity/scratch/telegram-file-manager/config.json").read_text(encoding="utf-8"))
+        except Exception:
+            cfg = {}
+    elif (SOURCE_DIR / "config.json").exists():
+        try:
+            cfg = json.loads((SOURCE_DIR / "config.json").read_text(encoding="utf-8"))
+        except Exception:
+            cfg = {}
 
     cfg["bot_token"] = bot_token
     cfg["gemini_api_key"] = gemini_key
-    cfg["gemini_model"] = "gemini-3.1-flash-lite"
-    cfg["owner_id"] = None
-    cfg["chat_id"] = None
-    cfg["username"] = ""
+    cfg["gemini_model"] = cfg.get("gemini_model", "gemini-3.1-flash-lite")
+    if "owner_id" not in cfg:
+        cfg["owner_id"] = None
+        cfg["chat_id"] = None
+        cfg["username"] = ""
     if "last_update_id" not in cfg:
         cfg["last_update_id"] = 0
 
@@ -198,7 +210,14 @@ def install(bot_token: str, gemini_key: str = "", gdrive_folder: str = "PRODUCTI
 
     # 6. Kích hoạt dịch vụ chạy ngầm
     uid = os.getuid()
-    # Dừng tiến trình cũ
+    # Dừng cả service cũ com.thienung.telegramfilebot nếu có
+    old_plist = LAUNCH_AGENTS_DIR / "com.thienung.telegramfilebot.plist"
+    if old_plist.exists():
+        subprocess.run(["launchctl", "bootout", f"gui/{uid}/com.thienung.telegramfilebot"], capture_output=True)
+        subprocess.run(["launchctl", "unload", "-w", str(old_plist)], capture_output=True)
+        subprocess.run(["pkill", "-f", "scratch/telegram-file-manager/bot.py"], capture_output=True)
+
+    # Dừng tiến trình cũ của macfilebot
     subprocess.run(["launchctl", "bootout", f"gui/{uid}/{PLIST_NAME}"], capture_output=True)
     subprocess.run(["launchctl", "bootout", f"gui/{uid}", str(PLIST_PATH)], capture_output=True)
     subprocess.run(["launchctl", "unload", "-w", str(PLIST_PATH)], capture_output=True)
