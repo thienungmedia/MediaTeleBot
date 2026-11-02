@@ -1,6 +1,6 @@
 {
-  "version": "1.2.1",
-  "release_notes": "• Đóng gói bộ cài đặt chuẩn macOS Apple Installer (MacFileBot_Installer.pkg).\n• Logo ứng dụng 3D phong cách Apple mới.\n• Tự động bật giao diện dán Bot Token & Gemini API Key ngay sau khi cài đặt pkg.\n• Sửa lỗi huỷ khi đổi thư mục trong MacFileBot Manager.\n• Tích hợp Lịch Âm thiên văn Việt Nam (tự động đổi ngày dương, xử lý lùi năm).",
+  "version": "1.3.0",
+  "release_notes": "• Bản đóng gói Universal MacFileBot_Installer.pkg v1.3.0 tương thích 100% mọi phiên bản macOS & Python.\n• Tự động kiểm tra thực thi Python, xoá xung đột Webhook & chống treo TCC khi khởi động.\n• Tự động đảm bảo tiến trình chạy ngầm 24/7 và mở sẵn vị trí Python khi cấp quyền Trợ năng Zalo.\n• Tích hợp Spotlight (mdfind) giúp tìm kiếm file/folder siêu tốc trên mọi ổ đĩa.",
   "files": {
     "bot.py": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/bot.py",
     "safe_fs.py": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/safe_fs.py",

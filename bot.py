@@ -8,9 +8,11 @@ Telegram Safe File Manager Bot & Antigravity Bridge for macOS.
 - Also bridges natural language requests directly to Antigravity AI.
 """
 
+import fcntl
 import importlib
 import json
 import os
+import signal
 import sys
 import threading
 import time
@@ -872,6 +874,24 @@ def main():
     # Mode: exit after receiving 1 natural-language task so Antigravity wakes up
     exit_on_nl_task = "--listen-for-ai" in args
 
+    try:
+        signal.signal(signal.SIGHUP, signal.SIG_IGN)
+    except Exception:
+        pass
+
+    lock_file_path = BASE_DIR / "bot.lock"
+    lock_fp = None
+    try:
+        lock_fp = open(lock_file_path, "a+", encoding="utf-8")
+        fcntl.flock(lock_fp.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        lock_fp.seek(0)
+        lock_fp.truncate()
+        lock_fp.write(str(os.getpid()))
+        lock_fp.flush()
+    except OSError:
+        print("ℹ️ Một tiến trình bot.py khác đang chạy (đã giữ bot.lock). Thoát để tránh trùng lặp 409.", flush=True)
+        sys.exit(0)
+
     token = os.environ.get("TELEGRAM_BOT_TOKEN") or cfg.get("bot_token")
     if not token:
         print("Chưa cấu hình TELEGRAM_BOT_TOKEN trong config.json", file=sys.stderr)
@@ -882,11 +902,16 @@ def main():
         save_config(cfg)
 
     client = TelegramClient(token)
+    try:
+        client.call("deleteWebhook", {"drop_pending_updates": False}, timeout=10)
+    except Exception:
+        pass
+
     me = client.call("getMe")
     bot_username = me.get("result", {}).get("username", "Bot")
     print(f"🚀 Telegram Bot @{bot_username} đang hoạt động! (Chế độ cấm xoá file: BẬT)", flush=True)
 
-    write_system_snapshot()
+    threading.Thread(target=write_system_snapshot, daemon=True).start()
     t_outbox = threading.Thread(target=outbox_worker, args=(client, cfg), daemon=True)
     t_outbox.start()
     t_update = threading.Thread(target=update_checker_worker, args=(client, cfg), daemon=True)
@@ -901,6 +926,11 @@ def main():
     offset = cfg.get("last_update_id", 0)
     while True:
         try:
+            cfg_latest = load_config()
+            if cfg_latest:
+                for k in ("owner_id", "chat_id", "username", "allowed_users", "default_gdrive_folder"):
+                    if k in cfg_latest:
+                        cfg[k] = cfg_latest[k]
             resp = client.call("getUpdates", {"offset": offset, "timeout": 25}, timeout=35)
             updates = resp.get("result", [])
             for upd in updates:

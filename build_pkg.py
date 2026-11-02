@@ -4,7 +4,7 @@ scratch_dir = '/Users/thienung/.gemini/antigravity/scratch/MacFileBot_Assistant'
 pkg_root = '/tmp/macfilebot_pkg_root'
 pkg_scripts = '/tmp/macfilebot_pkg_scripts'
 pkg_component = '/tmp/macfilebot_component.pkg'
-final_pkg = '/Users/thienung/Desktop/MacFileBot_Installer.pkg'
+final_pkg = f'{scratch_dir}/MacFileBot_Installer.pkg'
 
 if os.path.exists(pkg_root):
     shutil.rmtree(pkg_root)
@@ -29,7 +29,9 @@ core_files = [
     'bot.py', 'safe_fs.py', 'nl_engine.py', 'lunar_calendar.py', 'llm_intent.py',
     'updater.py', 'version.json', 'install_core.py', 'HuongDanLayMa.html',
     'no_delete_guard.py', 'zalo_sender.py', 'HUONG_DAN_NHANH.txt', 'README.md',
-    'config.example.json', 'AppIcon.icns'
+    'config.example.json', 'AppIcon.icns',
+    'KiemTraLoi.command', 'KhoiDongLai.command', 'DoiThuMucDrive.command',
+    'CapNhat.command', 'GoCaiDat.command'
 ]
 for f in core_files:
     src = f'{scratch_dir}/{f}'
@@ -40,33 +42,9 @@ for f in core_files:
 postinstall_code = '''#!/bin/bash
 CONSOLE_USER=$(stat -f "%Su" /dev/console 2>/dev/null || echo "$USER")
 CONSOLE_UID=$(id -u "$CONSOLE_USER" 2>/dev/null || echo "501")
-CONSOLE_HOME=$(eval echo "~$CONSOLE_USER")
-
-# 1. Tự động kiểm tra và cài đặt Python 3.12 chính thức nếu máy chưa có Python Framework
-HAS_OFFICIAL_PYTHON=0
-for p in /Library/Frameworks/Python.framework/Versions/3.14/bin/python3 \
-         /Library/Frameworks/Python.framework/Versions/3.13/bin/python3 \
-         /Library/Frameworks/Python.framework/Versions/3.12/bin/python3 \
-         /Library/Frameworks/Python.framework/Versions/3.11/bin/python3 \
-         /opt/homebrew/bin/python3; do
-    if [ -x "$p" ]; then
-        HAS_OFFICIAL_PYTHON=1
-        break
-    fi
-done
-
-if [ "$HAS_OFFICIAL_PYTHON" -eq 0 ]; then
-    echo "Đang tự động cài đặt Python 3.12 chính thức cho macOS..."
-    PY_PKG="/tmp/python-3.12-macos.pkg"
-    # Tải gói Python 3.12 chính thức từ python.org (Universal macOS 11+)
-    curl -sL --connect-timeout 10 --max-time 180 "https://www.python.org/ftp/python/3.12.8/python-3.12.8-macos11.pkg" -o "$PY_PKG" 2>/dev/null || true
-    if [ -s "$PY_PKG" ]; then
-        installer -pkg "$PY_PKG" -target / >/dev/null 2>&1 || true
-        rm -f "$PY_PKG"
-        if [ -x "/Applications/Python 3.12/Install Certificates.command" ]; then
-            "/Applications/Python 3.12/Install Certificates.command" >/dev/null 2>&1 || true
-        fi
-    fi
+CONSOLE_HOME=$(dscl . -read /Users/"$CONSOLE_USER" NFSHomeDirectory 2>/dev/null | awk '{print $2}')
+if [ -z "$CONSOLE_HOME" ]; then
+    CONSOLE_HOME="/Users/$CONSOLE_USER"
 fi
 
 USER_TARGET_DIR="$CONSOLE_HOME/Library/Application Support/MacFileBot"
@@ -87,7 +65,7 @@ if [ -f "$CONSOLE_HOME/.gemini/antigravity/scratch/telegram-file-manager/config.
     chmod 600 "$USER_TARGET_DIR/config.json"
 fi
 
-# Tạo biểu tượng ngoài Desktop để thợ dễ thấy và bấm mở
+# Tạo biểu tượng ngoài Desktop để người dùng dễ thấy và bấm mở
 if [ -d "$CONSOLE_HOME/Desktop" ]; then
     cp -R "/Applications/Cài Đặt MacFileBot.app" "$CONSOLE_HOME/Desktop/" 2>/dev/null || true
     cp -R "/Applications/MacFileBot Manager.app" "$CONSOLE_HOME/Desktop/" 2>/dev/null || true
@@ -99,20 +77,8 @@ if [ -d "$CONSOLE_HOME/Desktop" ]; then
     xattr -dr com.apple.quarantine "$CONSOLE_HOME/Desktop/Kiểm Tra Lỗi Bot.command" 2>/dev/null || true
 fi
 
-# Tự động nạp dịch vụ nếu đã có config
-PY_BIN=""
-for p in /Library/Frameworks/Python.framework/Versions/3.14/bin/python3 /Library/Frameworks/Python.framework/Versions/3.13/bin/python3 /Library/Frameworks/Python.framework/Versions/3.12/bin/python3 /Library/Frameworks/Python.framework/Versions/3.11/bin/python3 /opt/homebrew/bin/python3 /usr/local/bin/python3 /usr/bin/python3; do
-    if [ -x "$p" ]; then PY_BIN="$p"; break; fi
-done
-
-if [ -n "$PY_BIN" ] && [ -f "$USER_TARGET_DIR/config.json" ]; then
-    sudo -u "$CONSOLE_USER" "$PY_BIN" "$USER_TARGET_DIR/install_core.py" --setup-service 2>/dev/null || true
-fi
-
-# Luôn luôn mở Cài Đặt MacFileBot để người dùng dán Token Bot & Gemini API Key
-launchctl asuser "$CONSOLE_UID" sudo -u "$CONSOLE_USER" open "/Applications/Cài Đặt MacFileBot.app" 2>/dev/null || \
-sudo -u "$CONSOLE_USER" open "/Applications/Cài Đặt MacFileBot.app" 2>/dev/null || \
-open "/Applications/Cài Đặt MacFileBot.app" 2>/dev/null || true
+# Mở ứng dụng Cài Đặt MacFileBot ngay sau khi trình cài đặt hoàn tất
+(sleep 1; launchctl asuser "$CONSOLE_UID" sudo -u "$CONSOLE_USER" open "/Applications/Cài Đặt MacFileBot.app" 2>/dev/null || sudo -u "$CONSOLE_USER" open "/Applications/Cài Đặt MacFileBot.app" 2>/dev/null) >/dev/null 2>&1 &
 
 exit 0
 '''
@@ -120,14 +86,27 @@ with open(f'{pkg_scripts}/postinstall', 'w') as f:
     f.write(postinstall_code)
 os.chmod(f'{pkg_scripts}/postinstall', 0o755)
 
-# 5. Build component package
+# 5. Build component package (with BundleIsRelocatable=False so Apps always go to /Applications)
+os.environ['TMPDIR'] = '/tmp'
+comp_plist = '/tmp/macfilebot_components.plist'
+subprocess.run(['pkgbuild', '--analyze', '--root', pkg_root, comp_plist], check=True)
+import plistlib
+with open(comp_plist, 'rb') as fp:
+    bundles = plistlib.load(fp)
+for b in bundles:
+    b['BundleIsRelocatable'] = False
+    b['BundleHasStrictIdentifier'] = False
+with open(comp_plist, 'wb') as fp:
+    plistlib.dump(bundles, fp)
+
 print("Building component package with pkgbuild...")
 subprocess.run([
     'pkgbuild',
     '--root', pkg_root,
+    '--component-plist', comp_plist,
     '--scripts', pkg_scripts,
     '--identifier', 'com.macfilebot.pkg',
-    '--version', '1.2.0',
+    '--version', '1.3.0',
     '--install-location', '/',
     pkg_component
 ], check=True)

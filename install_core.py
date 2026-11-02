@@ -75,14 +75,25 @@ def find_best_python() -> str:
         "/Library/Frameworks/Python.framework/Versions/3.12/bin/python3",
         "/Library/Frameworks/Python.framework/Versions/3.11/bin/python3",
         "/Library/Frameworks/Python.framework/Versions/3.10/bin/python3",
+        "/Library/Frameworks/Python.framework/Versions/3.9/bin/python3",
         "/opt/homebrew/bin/python3",
         "/usr/local/bin/python3",
+        "/Library/Developer/CommandLineTools/usr/bin/python3",
         "/usr/bin/python3",
         sys.executable,
     ]
     for p in candidates:
         if p and os.path.exists(p) and os.access(p, os.X_OK):
-            return p
+            try:
+                chk = subprocess.run(
+                    [p, "-c", "import sys, ssl, urllib.request, sqlite3; assert sys.version_info >= (3, 8)"],
+                    capture_output=True,
+                    timeout=5,
+                )
+                if chk.returncode == 0:
+                    return p
+            except Exception:
+                continue
     return sys.executable or "/usr/bin/python3"
 
 
@@ -96,91 +107,24 @@ def verify_telegram_token(token: str) -> dict:
         with _urlopen_robust(req, timeout=10) as resp:
             data = json.loads(resp.read().decode("utf-8"))
             if data.get("ok"):
+                try:
+                    wh_req = urllib.request.Request(
+                        f"https://api.telegram.org/bot{token}/deleteWebhook",
+                        headers={"User-Agent": "MacFileBot-Installer/1.0"},
+                    )
+                    with _urlopen_robust(wh_req, timeout=5):
+                        pass
+                except Exception:
+                    pass
                 return {"ok": True, "result": data.get("result", {})}
             return {"ok": False, "error": data.get("description", "Token không hợp lệ")}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
 
-def install(bot_token: str, gemini_key: str = "", gdrive_folder: str = "PRODUCTION") -> dict:
-    bot_token = bot_token.strip()
-    gemini_key = gemini_key.strip()
-    gdrive_folder = gdrive_folder.strip() or "PRODUCTION"
-
-    # 1. Kiểm tra Token
-    token_check = verify_telegram_token(bot_token)
-    if not token_check["ok"]:
-        return {"ok": False, "error": f"Lỗi xác thực Bot Token: {token_check['error']}"}
-
-    bot_info = token_check["result"]
-    bot_username = bot_info.get("username", "")
-
-    # 2. Tạo thư mục đích an toàn sâu trong máy (~/Library/Application Support/MacFileBot)
-    TARGET_DIR.mkdir(parents=True, exist_ok=True)
+def _start_and_verify_service(python_bin: str) -> tuple[bool, str]:
+    """Write LaunchAgent plist, load it, and guarantee bot.py is running."""
     LAUNCH_AGENTS_DIR.mkdir(parents=True, exist_ok=True)
-
-    # 3. Sao chép toàn bộ code và tài nguyên vào TARGET_DIR
-    for fname in REQUIRED_FILES:
-        src = SOURCE_DIR / fname
-        if src.exists():
-            dst = TARGET_DIR / fname
-            shutil.copy2(src, dst)
-            try:
-                os.chmod(dst, 0o755)
-            except Exception:
-                pass
-
-    # Xoá cờ kiểm duyệt bảo mật của macOS tại thư mục đích
-    subprocess.run(["/usr/bin/xattr", "-dr", "com.apple.quarantine", str(TARGET_DIR)], capture_output=True)
-
-    # 4. Ghi file config.json tại TARGET_DIR (bảo toàn owner_id và chat_id cũ nếu có)
-    cfg = {}
-    cfg_target = TARGET_DIR / "config.json"
-    if cfg_target.exists():
-        try:
-            cfg = json.loads(cfg_target.read_text(encoding="utf-8"))
-        except Exception:
-            cfg = {}
-    elif (Path.home() / ".gemini/antigravity/scratch/telegram-file-manager/config.json").exists():
-        try:
-            cfg = json.loads((Path.home() / ".gemini/antigravity/scratch/telegram-file-manager/config.json").read_text(encoding="utf-8"))
-        except Exception:
-            cfg = {}
-    elif (SOURCE_DIR / "config.json").exists():
-        try:
-            cfg = json.loads((SOURCE_DIR / "config.json").read_text(encoding="utf-8"))
-        except Exception:
-            cfg = {}
-
-    cfg["bot_token"] = bot_token
-    cfg["gemini_api_key"] = gemini_key
-    cfg["gemini_model"] = cfg.get("gemini_model", "gemini-3.1-flash-lite")
-    if "owner_id" not in cfg:
-        cfg["owner_id"] = None
-        cfg["chat_id"] = None
-        cfg["username"] = ""
-    if "last_update_id" not in cfg:
-        cfg["last_update_id"] = 0
-
-    try:
-        with open(TARGET_DIR / "config.json", "w", encoding="utf-8") as f:
-            json.dump(cfg, f, indent=2, ensure_ascii=False)
-        os.chmod(TARGET_DIR / "config.json", 0o600)
-    except Exception as e:
-        return {"ok": False, "error": f"Không thể ghi config.json: {e}"}
-
-    # Cập nhật thư mục upload mặc định qua safe_fs
-    try:
-        import safe_fs
-        safe_fs.CONFIG_PATH = TARGET_DIR / "config.json"
-        safe_fs.BASE_DIR = TARGET_DIR
-        res_folder = safe_fs.set_default_gdrive_folder(gdrive_folder)
-        folder_display = res_folder.get("folder_name", gdrive_folder)
-    except Exception:
-        folder_display = gdrive_folder
-
-    # 5. Tạo LaunchAgent plist
-    python_bin = find_best_python()
     plist_content = f"""<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -214,40 +158,179 @@ def install(bot_token: str, gemini_key: str = "", gdrive_folder: str = "PRODUCTI
 </dict>
 </plist>
 """
-    try:
-        PLIST_PATH.write_text(plist_content, encoding="utf-8")
-        os.chmod(PLIST_PATH, 0o644)
-    except Exception as e:
-        return {"ok": False, "error": f"Không thể tạo LaunchAgent plist: {e}"}
+    PLIST_PATH.write_text(plist_content, encoding="utf-8")
+    os.chmod(PLIST_PATH, 0o644)
 
-    # 6. Kích hoạt dịch vụ chạy ngầm
     uid = os.getuid()
-    # Dừng cả service cũ com.thienung.telegramfilebot nếu có
     old_plist = LAUNCH_AGENTS_DIR / "com.thienung.telegramfilebot.plist"
     if old_plist.exists():
         subprocess.run(["launchctl", "bootout", f"gui/{uid}/com.thienung.telegramfilebot"], capture_output=True)
         subprocess.run(["launchctl", "unload", "-w", str(old_plist)], capture_output=True)
         subprocess.run(["pkill", "-f", "scratch/telegram-file-manager/bot.py"], capture_output=True)
 
-    # Dừng tiến trình cũ của macfilebot
     subprocess.run(["launchctl", "bootout", f"gui/{uid}/{PLIST_NAME}"], capture_output=True)
     subprocess.run(["launchctl", "bootout", f"gui/{uid}", str(PLIST_PATH)], capture_output=True)
-    subprocess.run(["launchctl", "unload", "-w", str(PLIST_PATH)], capture_output=True)
     subprocess.run(["pkill", "-f", f"{TARGET_DIR}/bot.py"], capture_output=True)
     time.sleep(0.5)
 
-    # Nạp và khởi chạy mới bằng cả API modern lẫn legacy
-    subprocess.run(["launchctl", "load", "-w", str(PLIST_PATH)], capture_output=True)
-    subprocess.run(["launchctl", "bootstrap", f"gui/{uid}", str(PLIST_PATH)], capture_output=True)
     subprocess.run(["launchctl", "enable", f"gui/{uid}/{PLIST_NAME}"], capture_output=True)
+    boot_res = subprocess.run(["launchctl", "bootstrap", f"gui/{uid}", str(PLIST_PATH)], capture_output=True)
+    if boot_res.returncode != 0:
+        subprocess.run(["launchctl", "load", "-w", str(PLIST_PATH)], capture_output=True)
     subprocess.run(["launchctl", "kickstart", "-k", "-p", f"gui/{uid}/{PLIST_NAME}"], capture_output=True)
 
-    # Chờ 1.5 giây và kiểm tra xem bot đã thực sự chạy chưa
     time.sleep(1.5)
-    is_running = False
+    is_running, pid = _check_running_process()
+    if not is_running:
+        try:
+            out_f = open(TARGET_DIR / "bot_service.log", "a", encoding="utf-8")
+            err_f = open(TARGET_DIR / "bot_service.err.log", "a", encoding="utf-8")
+            proc = subprocess.Popen(
+                [python_bin, str(TARGET_DIR / "bot.py")],
+                cwd=str(TARGET_DIR),
+                stdout=out_f,
+                stderr=err_f,
+                start_new_session=True,
+            )
+            time.sleep(1.0)
+            if proc.poll() is None:
+                is_running = True
+                pid = str(proc.pid)
+        except Exception:
+            pass
+    return is_running, pid
+
+
+def _check_running_process() -> tuple[bool, str]:
+    uid = os.getuid()
     chk = subprocess.run(["launchctl", "print", f"gui/{uid}/{PLIST_NAME}"], capture_output=True, text=True)
     if "state = running" in chk.stdout or "pid = " in chk.stdout:
-        is_running = True
+        for line in chk.stdout.splitlines():
+            if "pid = " in line:
+                return True, line.split("=")[-1].strip()
+        return True, ""
+
+    pg = subprocess.run(["pgrep", "-f", f"{TARGET_DIR}/bot.py"], capture_output=True, text=True)
+    if pg.returncode == 0 and pg.stdout.strip():
+        first_pid = pg.stdout.strip().splitlines()[0].strip()
+        return True, first_pid
+
+    lock_file = TARGET_DIR / "bot.lock"
+    if lock_file.exists():
+        try:
+            cand_pid = lock_file.read_text(encoding="utf-8").strip()
+            if cand_pid.isdigit():
+                os.kill(int(cand_pid), 0)
+                return True, cand_pid
+        except Exception:
+            pass
+
+    return False, ""
+
+
+def install(bot_token: str, gemini_key: str = "", gdrive_folder: str = "PRODUCTION") -> dict:
+    bot_token = bot_token.strip()
+    gemini_key = gemini_key.strip()
+    gdrive_folder = gdrive_folder.strip() or "PRODUCTION"
+
+    # 1. Kiểm tra Token
+    token_check = verify_telegram_token(bot_token)
+    if not token_check["ok"]:
+        return {"ok": False, "error": f"Lỗi xác thực Bot Token: {token_check['error']}"}
+
+    bot_info = token_check["result"]
+    bot_username = bot_info.get("username", "")
+
+    # 2. Tạo thư mục đích an toàn sâu trong máy (~/Library/Application Support/MacFileBot)
+    TARGET_DIR.mkdir(parents=True, exist_ok=True)
+    LAUNCH_AGENTS_DIR.mkdir(parents=True, exist_ok=True)
+
+    # 3. Sao chép toàn bộ code và tài nguyên vào TARGET_DIR
+    for fname in REQUIRED_FILES:
+        src = SOURCE_DIR / fname
+        if src.exists():
+            dst = TARGET_DIR / fname
+            try:
+                if src.resolve() != dst.resolve():
+                    shutil.copy2(src, dst)
+                os.chmod(dst, 0o755)
+            except Exception:
+                pass
+
+    # Xoá cờ kiểm duyệt bảo mật của macOS tại thư mục đích
+    subprocess.run(["/usr/bin/xattr", "-dr", "com.apple.quarantine", str(TARGET_DIR)], capture_output=True)
+
+    # 4. Ghi file config.json tại TARGET_DIR
+    cfg = {}
+    cfg_target = TARGET_DIR / "config.json"
+    if cfg_target.exists():
+        try:
+            cfg = json.loads(cfg_target.read_text(encoding="utf-8"))
+        except Exception:
+            cfg = {}
+    elif (Path.home() / ".gemini/antigravity/scratch/telegram-file-manager/config.json").exists():
+        try:
+            cfg = json.loads((Path.home() / ".gemini/antigravity/scratch/telegram-file-manager/config.json").read_text(encoding="utf-8"))
+        except Exception:
+            cfg = {}
+    elif (SOURCE_DIR / "config.json").exists():
+        try:
+            cfg = json.loads((SOURCE_DIR / "config.json").read_text(encoding="utf-8"))
+        except Exception:
+            cfg = {}
+
+    old_token = cfg.get("bot_token", "")
+    old_owner = cfg.get("owner_id")
+
+    cfg["bot_token"] = bot_token
+    if gemini_key:
+        cfg["gemini_api_key"] = gemini_key
+    elif "gemini_api_key" not in cfg:
+        cfg["gemini_api_key"] = ""
+    cfg["gemini_model"] = cfg.get("gemini_model", "gemini-3.1-flash-lite")
+
+    # Nếu đổi sang Bot Token mới thì reset hoàn toàn owner_id và last_update_id
+    if old_token != bot_token:
+        cfg["owner_id"] = None
+        cfg["chat_id"] = None
+        cfg["username"] = ""
+        cfg["allowed_users"] = []
+        cfg["last_update_id"] = 0
+    else:
+        # Giữ chủ cũ trong allowed_users và mở chờ /start để người vừa cài đặt chắc chắn kết nối được
+        allowed = cfg.get("allowed_users", [])
+        if old_owner and old_owner not in allowed:
+            allowed.append(old_owner)
+        cfg["allowed_users"] = allowed
+        cfg["owner_id"] = None
+
+    if "last_update_id" not in cfg:
+        cfg["last_update_id"] = 0
+
+    try:
+        with open(TARGET_DIR / "config.json", "w", encoding="utf-8") as f:
+            json.dump(cfg, f, indent=2, ensure_ascii=False)
+        os.chmod(TARGET_DIR / "config.json", 0o600)
+    except Exception as e:
+        return {"ok": False, "error": f"Không thể ghi config.json: {e}"}
+
+    # Cập nhật thư mục upload mặc định qua safe_fs
+    try:
+        sys.path.insert(0, str(TARGET_DIR))
+        import safe_fs
+        safe_fs.CONFIG_PATH = TARGET_DIR / "config.json"
+        safe_fs.BASE_DIR = TARGET_DIR
+        res_folder = safe_fs.set_default_gdrive_folder(gdrive_folder)
+        folder_display = res_folder.get("folder_name", gdrive_folder)
+    except Exception:
+        folder_display = gdrive_folder
+
+    # 5 & 6. Tạo LaunchAgent plist và đảm bảo bot chạy ngầm 100%
+    python_bin = find_best_python()
+    try:
+        is_running, _ = _start_and_verify_service(python_bin)
+    except Exception as e:
+        return {"ok": False, "error": f"Không thể khởi chạy dịch vụ chạy ngầm: {e}"}
 
     return {
         "ok": True,
@@ -261,14 +344,8 @@ def install(bot_token: str, gemini_key: str = "", gdrive_folder: str = "PRODUCTI
 
 
 def get_status() -> dict:
+    is_running, pid = _check_running_process()
     uid = os.getuid()
-    chk = subprocess.run(["launchctl", "print", f"gui/{uid}/{PLIST_NAME}"], capture_output=True, text=True)
-    is_running = "state = running" in chk.stdout or "pid = " in chk.stdout
-    pid = ""
-    for line in chk.stdout.splitlines():
-        if "pid = " in line:
-            pid = line.split("=")[-1].strip()
-            break
 
     # Nếu service mới chưa chạy, thử kiểm tra service cũ
     if not is_running:
@@ -326,9 +403,8 @@ def set_folder(folder_arg: str) -> dict:
 
 
 def restart() -> dict:
-    uid = os.getuid()
-    subprocess.run(["launchctl", "kickstart", "-k", "-p", f"gui/{uid}/{PLIST_NAME}"], capture_output=True)
-    time.sleep(1)
+    python_bin = find_best_python()
+    _start_and_verify_service(python_bin)
     return get_status()
 
 
@@ -338,66 +414,13 @@ def setup_service() -> dict:
     if not cfg_file.exists():
         return {"ok": False, "error": "Chưa có config.json"}
     try:
-        cfg = json.loads(cfg_file.read_text(encoding="utf-8"))
+        json.loads(cfg_file.read_text(encoding="utf-8"))
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
-    uid = os.getuid()
-    old_plist = LAUNCH_AGENTS_DIR / "com.thienung.telegramfilebot.plist"
-    if old_plist.exists():
-        subprocess.run(["launchctl", "bootout", f"gui/{uid}/com.thienung.telegramfilebot"], capture_output=True)
-        subprocess.run(["launchctl", "unload", "-w", str(old_plist)], capture_output=True)
-        subprocess.run(["pkill", "-f", "scratch/telegram-file-manager/bot.py"], capture_output=True)
-
     python_bin = find_best_python()
-    plist_content = f"""<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key>
-    <string>{PLIST_NAME}</string>
-    <key>ProgramArguments</key>
-    <array>
-        <string>{python_bin}</string>
-        <string>{TARGET_DIR}/bot.py</string>
-    </array>
-    <key>WorkingDirectory</key>
-    <string>{TARGET_DIR}</string>
-    <key>RunAtLoad</key>
-    <true/>
-    <key>KeepAlive</key>
-    <true/>
-    <key>StandardOutPath</key>
-    <string>{TARGET_DIR}/bot_service.log</string>
-    <key>StandardErrorPath</key>
-    <string>{TARGET_DIR}/bot_service.err.log</string>
-    <key>EnvironmentVariables</key>
-    <dict>
-        <key>PATH</key>
-        <string>/Library/Frameworks/Python.framework/Versions/Current/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
-        <key>HOME</key>
-        <string>{Path.home()}</string>
-        <key>PYTHONUNBUFFERED</key>
-        <string>1</string>
-    </dict>
-</dict>
-</plist>
-"""
-    LAUNCH_AGENTS_DIR.mkdir(parents=True, exist_ok=True)
-    PLIST_PATH.write_text(plist_content, encoding="utf-8")
-    os.chmod(PLIST_PATH, 0o644)
-
-    subprocess.run(["launchctl", "bootout", f"gui/{uid}/{PLIST_NAME}"], capture_output=True)
-    subprocess.run(["launchctl", "bootout", f"gui/{uid}", str(PLIST_PATH)], capture_output=True)
-    subprocess.run(["launchctl", "unload", "-w", str(PLIST_PATH)], capture_output=True)
-    subprocess.run(["pkill", "-f", f"{TARGET_DIR}/bot.py"], capture_output=True)
-    time.sleep(0.5)
-
-    subprocess.run(["launchctl", "load", "-w", str(PLIST_PATH)], capture_output=True)
-    subprocess.run(["launchctl", "bootstrap", f"gui/{uid}", str(PLIST_PATH)], capture_output=True)
-    subprocess.run(["launchctl", "enable", f"gui/{uid}/{PLIST_NAME}"], capture_output=True)
-    subprocess.run(["launchctl", "kickstart", "-k", "-p", f"gui/{uid}/{PLIST_NAME}"], capture_output=True)
-    return {"ok": True}
+    is_running, pid = _start_and_verify_service(python_bin)
+    return {"ok": True, "is_running": is_running, "pid": pid}
 
 
 if __name__ == "__main__":

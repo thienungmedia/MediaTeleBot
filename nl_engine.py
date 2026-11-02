@@ -344,6 +344,41 @@ def find_best_matches(
                         tier5_tokens.append(entry)
 
     results = tier1_exact + tier2_accent + tier3_prefix + tier4_substring + tier5_tokens
+    if not results:
+        import subprocess
+        q_tokens = [w for w in re.split(r"[^a-zA-Z0-9]+", item_norm) if len(w) >= 2]
+        search_tok = max(q_tokens, key=len) if q_tokens else item_name
+        try:
+            md_res = subprocess.run(
+                ["/usr/bin/mdfind", "-name", search_tok],
+                capture_output=True,
+                text=True,
+                timeout=4,
+            )
+            for line in md_res.stdout.splitlines()[:200]:
+                line = line.strip()
+                if not line or "/Library/" in line or "/." in line:
+                    continue
+                p_obj = Path(line)
+                if not p_obj.exists():
+                    continue
+                full = str(p_obj.resolve())
+                if full in seen_paths:
+                    continue
+                if not parent_ok(full):
+                    continue
+                is_d = p_obj.is_dir()
+                if type_filter == "dir" and not is_d:
+                    continue
+                if type_filter == "file" and is_d:
+                    continue
+                name_norm = strip_accents(p_obj.name)
+                if item_norm in name_norm or tokens_match(item_norm, name_norm):
+                    seen_paths.add(full)
+                    results.append({"path": full, "name": p_obj.name, "is_dir": is_d})
+        except Exception:
+            pass
+
     if type_filter is None:
         dirs = [r for r in results if r["is_dir"]]
         files = [r for r in results if not r["is_dir"]]

@@ -3,25 +3,24 @@ on run
     set myPath to POSIX path of (path to me)
     set parentDir to do shell script "dirname " & quoted form of myPath
     
-    -- 1. Tìm Python 3
+    -- 1. Tìm Python 3 thực sự hoạt động (kiểm tra chạy thử import sys)
     set pyPath to do shell script "
-    if [ -x '/Library/Frameworks/Python.framework/Versions/3.14/bin/python3' ]; then
-        echo '/Library/Frameworks/Python.framework/Versions/3.14/bin/python3'
-    elif [ -x '/Library/Frameworks/Python.framework/Versions/3.13/bin/python3' ]; then
-        echo '/Library/Frameworks/Python.framework/Versions/3.13/bin/python3'
-    elif [ -x '/Library/Frameworks/Python.framework/Versions/3.12/bin/python3' ]; then
-        echo '/Library/Frameworks/Python.framework/Versions/3.12/bin/python3'
-    elif [ -x '/Library/Frameworks/Python.framework/Versions/3.11/bin/python3' ]; then
-        echo '/Library/Frameworks/Python.framework/Versions/3.11/bin/python3'
-    elif [ -x '/opt/homebrew/bin/python3' ]; then
-        echo '/opt/homebrew/bin/python3'
-    elif [ -x '/usr/local/bin/python3' ]; then
-        echo '/usr/local/bin/python3'
-    elif [ -x '/usr/bin/python3' ]; then
-        echo '/usr/bin/python3'
-    else
-        which python3 2>/dev/null || echo ''
-    fi
+    for p in '/Library/Frameworks/Python.framework/Versions/3.14/bin/python3' \
+             '/Library/Frameworks/Python.framework/Versions/3.13/bin/python3' \
+             '/Library/Frameworks/Python.framework/Versions/3.12/bin/python3' \
+             '/Library/Frameworks/Python.framework/Versions/3.11/bin/python3' \
+             '/Library/Frameworks/Python.framework/Versions/3.10/bin/python3' \
+             '/Library/Frameworks/Python.framework/Versions/3.9/bin/python3' \
+             '/opt/homebrew/bin/python3' \
+             '/usr/local/bin/python3' \
+             '/Library/Developer/CommandLineTools/usr/bin/python3' \
+             '/usr/bin/python3'; do
+        if [ -x \"$p\" ] && \"$p\" -c 'import sys; assert sys.version_info >= (3, 8)' >/dev/null 2>&1; then
+            echo \"$p\"
+            exit 0
+        fi
+    done
+    echo ''
     "
     
     if pyPath is "" then
@@ -180,38 +179,31 @@ Bấm 'Mặc định' để dùng: PRODUCTION" default answer preFolder with tit
     set gdriveFolderDisplay to item 4 of resItems
     set AppleScript's text item delimiters to ""
     
-    -- 7.5 Cấp quyền Trợ Năng & Quyền truy cập đĩa (Accessibility / Full Disk Access)
-    set permMsg to "🔓 CẤP QUYỀN TRỢ NĂNG (ACCESSIBILITY) & Ổ ĐĨA
-
-Để bot có thể tìm kiếm file/footage khắp các ổ cứng ngoài và gửi tin qua Zalo:
-Hệ điều hành macOS cần bật quyền trong mục TRỢ NĂNG (Accessibility).
-
-👉 Bấm nút 'Mở Trợ Năng' bên dưới để mở ngay trang Cài Đặt Trợ Năng trên máy Mac của bạn (gạt BẬT cho Terminal / Python)."
-    try
-        set diagPerm to (display dialog permMsg with title "Cấp Quyền Trợ Năng macOS" buttons {"Để Sau", "Mở Trợ Năng"} default button "Mở Trợ Năng" with icon note)
-        if button returned of diagPerm is "Mở Trợ Năng" then
-            do shell script "open 'x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility'"
-            do shell script "open 'x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles'"
-        end if
-    on error number -128
-        -- Bỏ qua nếu bấm Huỷ
-    end try
-
-    -- 8. Thông báo thành công
-    set successMsg to "🎉 CHÚC MỪNG! ĐÃ CÀI ĐẶT THÀNH CÔNG!
+    -- 7.5 Thông báo thành công (Bot đã chạy ngầm ngay lập tức, không bị chặn bởi bất kỳ bước nào)
+    set successMsg to "🎉 CHÚC MỪNG! ĐÃ CÀI ĐẶT & KHỞI CHẠY THÀNH CÔNG!
 
 Trợ lý MacFileBot đã được cài sâu vào hệ thống macOS.
-⚙️ Dịch vụ đang CHẠY NGẦM NATIVE 24/7 (Kể cả khi tắt máy bật lại).
+⚙️ Dịch vụ đang CHẠY NGẦM 24/7 (tự chạy lại kể cả khi khởi động lại máy).
 📁 Thư mục Google Drive: " & gdriveFolderDisplay & "
 
-👉 BƯỚC KÍCH HOẠT (DUY NHẤT 1 LẦN):
+👉 BƯỚC KÍCH HOẠT TRÊN TELEGRAM:
 1. Mở Telegram tìm con bot: @" & botUser & "
-2. Bấm nút START (hoặc gửi tin: /start)
+2. Nhắn lệnh: /start
+(Bot sẽ phản hồi ngay lập tức!)"
 
-Bot sẽ tự động nhận diện bạn là CHỦ NHÂN DUY NHẤT!"
-
-    display dialog successMsg with title "Cài Đặt Thành Công" buttons {"Mở Telegram Ngay", "Hoàn tất"} default button "Mở Telegram Ngay" with icon note
-    if button returned of result is "Mở Telegram Ngay" then
+    set finalDlg to (display dialog successMsg with title "Cài Đặt Thành Công" buttons {"Cấp Quyền Zalo (Tuỳ chọn)", "Hoàn tất", "Mở Telegram Ngay"} default button "Mở Telegram Ngay" with icon note)
+    set finalBtn to button returned of finalDlg
+    if finalBtn is "Mở Telegram Ngay" then
+        open location "https://t.me/" & botUser
+    else if finalBtn is "Cấp Quyền Zalo (Tuỳ chọn)" then
+        do shell script "open 'x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility'"
+        do shell script "
+        if [ -d '/Library/Frameworks/Python.framework/Versions/Current/Resources/Python.app' ]; then
+            open -R '/Library/Frameworks/Python.framework/Versions/Current/Resources/Python.app'
+        elif [ -d '/System/Applications/Utilities/Terminal.app' ]; then
+            open -R '/System/Applications/Utilities/Terminal.app'
+        fi
+        "
         open location "https://t.me/" & botUser
     end if
 end run

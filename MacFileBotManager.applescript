@@ -4,23 +4,22 @@ on run
     set parentDir to do shell script "dirname " & quoted form of myPath
     
     set pyPath to do shell script "
-    if [ -x '/Library/Frameworks/Python.framework/Versions/3.14/bin/python3' ]; then
-        echo '/Library/Frameworks/Python.framework/Versions/3.14/bin/python3'
-    elif [ -x '/Library/Frameworks/Python.framework/Versions/3.13/bin/python3' ]; then
-        echo '/Library/Frameworks/Python.framework/Versions/3.13/bin/python3'
-    elif [ -x '/Library/Frameworks/Python.framework/Versions/3.12/bin/python3' ]; then
-        echo '/Library/Frameworks/Python.framework/Versions/3.12/bin/python3'
-    elif [ -x '/Library/Frameworks/Python.framework/Versions/3.11/bin/python3' ]; then
-        echo '/Library/Frameworks/Python.framework/Versions/3.11/bin/python3'
-    elif [ -x '/opt/homebrew/bin/python3' ]; then
-        echo '/opt/homebrew/bin/python3'
-    elif [ -x '/usr/local/bin/python3' ]; then
-        echo '/usr/local/bin/python3'
-    elif [ -x '/usr/bin/python3' ]; then
-        echo '/usr/bin/python3'
-    else
-        which python3 2>/dev/null || echo ''
-    fi
+    for p in '/Library/Frameworks/Python.framework/Versions/3.14/bin/python3' \
+             '/Library/Frameworks/Python.framework/Versions/3.13/bin/python3' \
+             '/Library/Frameworks/Python.framework/Versions/3.12/bin/python3' \
+             '/Library/Frameworks/Python.framework/Versions/3.11/bin/python3' \
+             '/Library/Frameworks/Python.framework/Versions/3.10/bin/python3' \
+             '/Library/Frameworks/Python.framework/Versions/3.9/bin/python3' \
+             '/opt/homebrew/bin/python3' \
+             '/usr/local/bin/python3' \
+             '/Library/Developer/CommandLineTools/usr/bin/python3' \
+             '/usr/bin/python3'; do
+        if [ -x \"$p\" ] && \"$p\" -c 'import sys; assert sys.version_info >= (3, 8)' >/dev/null 2>&1; then
+            echo \"$p\"
+            exit 0
+        fi
+    done
+    echo '/usr/bin/python3'
     "
     
     set coreScript to parentDir & "/install_core.py"
@@ -65,7 +64,13 @@ Chọn thao tác bạn muốn thực hiện:"
     
     if userChoice is "Mở Trợ Năng" then
         do shell script "open 'x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility'"
-        do shell script "open 'x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles'"
+        do shell script "
+        if [ -d '/Library/Frameworks/Python.framework/Versions/Current/Resources/Python.app' ]; then
+            open -R '/Library/Frameworks/Python.framework/Versions/Current/Resources/Python.app'
+        elif [ -d '/System/Applications/Utilities/Terminal.app' ]; then
+            open -R '/System/Applications/Utilities/Terminal.app'
+        fi
+        "
     else if userChoice is "Khởi Động Lại" then
         do shell script quoted form of pyPath & " " & quoted form of coreScript & " --restart"
         display dialog "✅ ĐÃ KHỞI ĐỘNG LẠI THÀNH CÔNG!" & return & return & "Dịch vụ đã được nạp lại và đang chạy ngầm 24/7." with title "Khởi Động Lại" buttons {"OK"} default button "OK" with icon note
