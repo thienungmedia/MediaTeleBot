@@ -292,6 +292,7 @@ def build_home_keyboard() -> dict:
     buttons = [
         [
             {"text": "💽 Danh sách Ổ đĩa (/Volumes)", "callback_data": "drives"},
+            {"text": "☁️ Google Drive", "callback_data": "gdrive_home"},
         ],
         [
             {"text": "📥 Downloads", "callback_data": f"open:{register_path(str(home / 'Downloads'))}"},
@@ -684,6 +685,22 @@ def handle_callback(client: TelegramClient, cfg: dict, cb: dict) -> None:
     if data == "drives":
         view_text, kb = format_drives_view()
         client.send_message(chat_id, view_text, reply_markup=kb)
+        return
+
+    if data == "gdrive_home":
+        gd_root = find_google_drive_root(auto_launch=True)
+        if gd_root and gd_root.exists():
+            view_text, kb = format_dir_view(str(gd_root), chat_id)
+            client.send_message(chat_id, view_text, reply_markup=kb)
+        else:
+            client.send_message(
+                chat_id,
+                "⚠️ Chưa tìm thấy thư mục Google Drive trên máy Mac này.\n\n"
+                "💡 Để bot tìm và mở file trên Google Drive:\n"
+                "1. Hãy cài đặt và đăng nhập ứng dụng **Google Drive for Desktop** trên máy Mac.\n"
+                "2. Đảm bảo ứng dụng Google Drive đang chạy trên thanh menu góc trên màn hình.",
+                reply_markup=build_home_keyboard(),
+            )
         return
 
     if data.startswith("qcp:") or data.startswith("qmv:") or data.startswith("qgd:"):

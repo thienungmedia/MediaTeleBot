@@ -14,6 +14,7 @@ import os
 import re
 import shutil
 import time
+import unicodedata
 from pathlib import Path
 import safe_fs
 from safe_fs import (
@@ -130,11 +131,13 @@ def clean_polite_phrases(s: str) -> str:
 
 
 def detect_item_type_hint(raw_text: str) -> str | None:
-    """Detect if user explicitly asked for a 'dir' (thư mục/folder) or 'file'."""
+    """
+    Detect if user explicitly asked for a specific file extension.
+    Note: In Vietnamese video workflows, users often say 'file psc hằng cần' or 'file cưới 2510'
+    to refer to a project folder, so we only restrict to 'file' when a file extension is present.
+    """
     t = raw_text.strip().lower()
-    if re.search(r"^(lại\s+|cho\s+tôi\s+|giúp\s+tôi\s+)?(cái\s+)?(thư\s+mục|folder)\b", t):
-        return "dir"
-    if re.search(r"^(lại\s+|cho\s+tôi\s+|giúp\s+tôi\s+)?(cái\s+)?(file|tệp|video|clip)\b", t):
+    if re.search(r"\.[a-z0-9]{2,5}\b", t):
         return "file"
     return None
 
@@ -234,6 +237,14 @@ def find_best_matches(
         search_roots = [home / "Documents"]
     elif effective_root_hint and "film" in effective_root_hint:
         search_roots = [Path("/Volumes/FILM DATA")]
+    elif effective_root_hint and "drive" in effective_root_hint:
+        search_roots = []
+        gd_root = find_google_drive_root(auto_launch=False)
+        if gd_root and gd_root.exists():
+            def_sub = resolve_subfolder_fuzzy(gd_root, get_default_gdrive_subfolder())
+            if def_sub.exists():
+                search_roots.append(def_sub)
+            search_roots.append(gd_root)
     else:
         search_roots = [
             home / "Desktop",
@@ -243,6 +254,12 @@ def find_best_matches(
             home / "Pictures",
             home,
         ]
+        gd_root = find_google_drive_root(auto_launch=False)
+        if gd_root and gd_root.exists():
+            def_sub = resolve_subfolder_fuzzy(gd_root, get_default_gdrive_subfolder())
+            if def_sub.exists():
+                search_roots.append(def_sub)
+            search_roots.append(gd_root)
         volumes = Path("/Volumes")
         if volumes.exists():
             for v in sorted(volumes.iterdir()):
@@ -271,8 +288,14 @@ def find_best_matches(
         if not root.exists():
             continue
 
-        max_depth = 2 if root == home else 4
+        is_cloud = "cloudstorage" in str(root).lower() or "googledrive" in str(root).lower()
+        max_depth = 2 if (root == home or is_cloud) else 4
+        budget = 1.5 if is_cloud else 4.0
+        t_start = time.time()
+
         for dirpath, dirnames, filenames in os.walk(root, topdown=True):
+            if time.time() - t_start > budget:
+                break
             rel_depth = len(Path(dirpath).relative_to(root).parts)
             if rel_depth >= max_depth:
                 dirnames[:] = []
@@ -287,62 +310,82 @@ def find_best_matches(
 
             if type_filter != "file":
                 for d in dirnames:
-                    full = str((Path(dirpath) / d).resolve())
-                    if full in seen_paths:
+                    d_lower = d.lower()
+                    d_norm = strip_accents(d)
+                    m_tier = 0
+                    if d_lower == item_lower:
+                        m_tier = 1
+                    elif d_norm == item_norm:
+                        m_tier = 2
+                    elif d_norm.startswith(item_norm + " ") or d_norm.startswith(item_norm):
+                        m_tier = 3
+                    elif item_norm in d_norm:
+                        m_tier = 4
+                    elif tokens_match(item_norm, d_norm):
+                        m_tier = 5
+                    if not m_tier:
+                        continue
+                    full = str(Path(dirpath) / d)
+                    norm_full = unicodedata.normalize("NFC", full)
+                    if norm_full in seen_paths:
                         continue
                     if exclude_resolved and (full == exclude_resolved or str(Path(full).parent) == exclude_resolved):
                         continue
                     if not parent_ok(full):
                         continue
-                    d_lower = d.lower()
-                    d_norm = strip_accents(d)
+                    seen_paths.add(norm_full)
                     entry = {"path": full, "name": d, "is_dir": True}
-                    if d_lower == item_lower:
-                        seen_paths.add(full)
+                    if m_tier == 1:
                         tier1_exact.append(entry)
-                    elif d_norm == item_norm:
-                        seen_paths.add(full)
+                    elif m_tier == 2:
                         tier2_accent.append(entry)
-                    elif d_norm.startswith(item_norm + " ") or d_norm.startswith(item_norm):
-                        seen_paths.add(full)
+                    elif m_tier == 3:
                         tier3_prefix.append(entry)
-                    elif item_norm in d_norm:
-                        seen_paths.add(full)
+                    elif m_tier == 4:
                         tier4_substring.append(entry)
-                    elif tokens_match(item_norm, d_norm):
-                        seen_paths.add(full)
+                    else:
                         tier5_tokens.append(entry)
 
             if type_filter != "dir":
                 for f in filenames:
                     if is_ignored_file(f):
                         continue
-                    full = str((Path(dirpath) / f).resolve())
-                    if full in seen_paths:
+                    f_lower = f.lower()
+                    stem_lower = Path(f).stem.lower()
+                    f_norm = strip_accents(f)
+                    stem_norm = strip_accents(Path(f).stem)
+                    m_tier = 0
+                    if f_lower == item_lower or stem_lower == item_lower:
+                        m_tier = 1
+                    elif f_norm == item_norm or stem_norm == item_norm:
+                        m_tier = 2
+                    elif stem_norm.startswith(item_norm):
+                        m_tier = 3
+                    elif item_norm in f_norm:
+                        m_tier = 4
+                    elif tokens_match(item_norm, stem_norm):
+                        m_tier = 5
+                    if not m_tier:
+                        continue
+                    full = str(Path(dirpath) / f)
+                    norm_full = unicodedata.normalize("NFC", full)
+                    if norm_full in seen_paths:
                         continue
                     if exclude_resolved and str(Path(full).parent) == exclude_resolved:
                         continue
                     if not parent_ok(full):
                         continue
-                    f_lower = f.lower()
-                    stem_lower = Path(f).stem.lower()
-                    f_norm = strip_accents(f)
-                    stem_norm = strip_accents(Path(f).stem)
+                    seen_paths.add(norm_full)
                     entry = {"path": full, "name": f, "is_dir": False}
-                    if f_lower == item_lower or stem_lower == item_lower:
-                        seen_paths.add(full)
+                    if m_tier == 1:
                         tier1_exact.append(entry)
-                    elif f_norm == item_norm or stem_norm == item_norm:
-                        seen_paths.add(full)
+                    elif m_tier == 2:
                         tier2_accent.append(entry)
-                    elif stem_norm.startswith(item_norm):
-                        seen_paths.add(full)
+                    elif m_tier == 3:
                         tier3_prefix.append(entry)
-                    elif item_norm in f_norm:
-                        seen_paths.add(full)
+                    elif m_tier == 4:
                         tier4_substring.append(entry)
-                    elif tokens_match(item_norm, stem_norm):
-                        seen_paths.add(full)
+                    else:
                         tier5_tokens.append(entry)
 
     results = tier1_exact + tier2_accent + tier3_prefix + tier4_substring + tier5_tokens
@@ -359,7 +402,9 @@ def find_best_matches(
             )
             for line in md_res.stdout.splitlines()[:200]:
                 line = line.strip()
-                if not line or "/Library/" in line or "/." in line:
+                if not line or "/." in line:
+                    continue
+                if "/Library/" in line and "/Library/CloudStorage/" not in line:
                     continue
                 p_obj = Path(line)
                 if not p_obj.exists():
@@ -876,11 +921,14 @@ def parse_and_execute_nl(text: str, chat_id: int = 0, _from_llm: bool = False) -
         )
     if size_match:
         raw_target = size_match.group(1)
+        clean_target = clean_polite_phrases(raw_target)
         matches = find_best_matches(raw_target)
-        if not matches:
+        gd_matches = query_gdrive_items(clean_target) if clean_target else []
+
+        if not matches and not gd_matches:
             return {
                 "handled": True,
-                "reply": f"🔍 Tôi đã tìm trên máy Mac và ổ cứng ngoài nhưng không thấy thư mục/file nào khớp với '{clean_polite_phrases(raw_target)}'.",
+                "reply": f"🔍 Tôi đã tìm trên máy Mac, ổ cứng ngoài và Google Drive nhưng không thấy thư mục/file nào khớp với '{clean_target}'.",
             }
         lines = ["📊 KẾT QUẢ KIỂM TRA DUNG LƯỢNG:\n"]
         for m in matches[:5]:
@@ -900,6 +948,20 @@ def parse_and_execute_nl(text: str, chat_id: int = 0, _from_llm: bool = False) -
                         f"  • Đường dẫn: {m['path']}\n"
                         f"  • Kích thước: {sz_info['size_human']}\n"
                     )
+        if gd_matches:
+            lines.append("☁️ TRÊN GOOGLE DRIVE:")
+            for gm in gd_matches[:5]:
+                icon = "📁" if gm.get("is_dir") else "📄"
+                shared_tag = " [Được chia sẻ với tôi]" if gm.get("is_shared") else ""
+                cnt_info = ""
+                if gm.get("is_dir") and gm.get("file_count") is not None:
+                    cnt_info = f" ({gm['file_count']} file, {gm.get('dir_count', 0)} thư mục con)"
+                url_line = f"\n  • 🔗 {gm['url']}" if gm.get("url") else ""
+                lines.append(
+                    f"{icon} {gm['name']}{shared_tag}\n"
+                    f"  • Nằm trong: {gm.get('parent_name', 'Google Drive')}\n"
+                    f"  • Tổng dung lượng: {gm.get('size', '?')}{cnt_info}{url_line}\n"
+                )
         return {"handled": True, "reply": "\n".join(lines), "matches": matches[:5]}
 
     # 4. Upload to Google Drive (Default destination: THIEN UNG PRODUCTION!)
@@ -970,8 +1032,8 @@ def parse_and_execute_nl(text: str, chat_id: int = 0, _from_llm: bool = False) -
     if shared_match:
         return _smart_search_reply(t)
 
-    # 8. Search file/folder (smart search: ưu tiên SOURCE & FILM DATA, liệt kê cả kết quả liên quan)
-    find_match = re.search(r"^(?:tìm|tìm\s+kiếm|kiếm)\s+(.+)$", t, flags=re.IGNORECASE)
+    # 8. Search file/folder (smart search: ưu tiên SOURCE & FILM DATA & Google Drive)
+    find_match = re.search(r"^(?:tìm|tìm\s+kiếm|kiếm|kiểm\s+tra|check)\s+(.+)$", t, flags=re.IGNORECASE)
     if find_match:
         return _smart_search_reply(find_match.group(1))
 
@@ -991,6 +1053,12 @@ def parse_and_execute_nl(text: str, chat_id: int = 0, _from_llm: bool = False) -
                 return res
             if res.get("open_dir"):
                 return res
+
+        # Nếu người dùng gõ trực tiếp tên file/thư mục (vd: "psc hằng cần"), tự động tìm trên máy + ổ cứng + Google Drive!
+        if 1 <= len(t.split()) <= 7 and not t.startswith("/"):
+            sr = _smart_search_reply(t)
+            if sr.get("handled") and "Không tìm thấy mục nào" not in sr.get("reply", ""):
+                return sr
 
     return {
         "handled": True,
@@ -1385,6 +1453,12 @@ def _search_priority_roots() -> list[tuple[Path, int, float]]:
                 roots.append((v, 4, 8.0))
     for sub in ("Desktop", "Downloads", "Documents", "Movies", "Pictures"):
         roots.append((home / sub, 4, 6.0))
+    gd_root = find_google_drive_root(auto_launch=False)
+    if gd_root and gd_root.exists():
+        def_sub = resolve_subfolder_fuzzy(gd_root, get_default_gdrive_subfolder())
+        if def_sub.exists():
+            roots.append((def_sub, 2, 1.5))
+        roots.append((gd_root, 1, 1.0))
     return roots
 
 
@@ -1558,11 +1632,15 @@ def _smart_search_reply(raw_query: str) -> dict:
             return {"handled": True, "reply": f"🔍 Không tìm thấy mục nào khớp với '{shown_q}' trên Google Drive của bạn (kể cả mục Được chia sẻ với tôi)."}
 
         lines = [f"☁️ KẾT QUẢ TÌM TRÊN GOOGLE DRIVE cho '{shown_q}':\n"]
+        matches = []
         for i, m in enumerate(gd_matches[:8], 1):
             icon = "📁" if m.get("is_dir") else "📄"
+            sz_str = f" — ⚖️ {m['size']}" if m.get("size") and m.get("size") != "-" else ""
             parent_str = f" (nằm trong {m['parent_name']})" if m.get("parent_name") else ""
-            lines.append(f"{i}. {icon} {m['name']}{parent_str}\n    🔗 {m.get('url', 'Đang đồng bộ...')}")
-        return {"handled": True, "reply": "\n".join(lines)}
+            lines.append(f"{i}. {icon} {m['name']}{sz_str}{parent_str}\n    🔗 {m.get('url', 'Đang đồng bộ...')}")
+            if m.get("path"):
+                matches.append({"path": m["path"], "name": m["name"], "is_dir": bool(m.get("is_dir"))})
+        return {"handled": True, "reply": "\n".join(lines), "matches": matches}
 
     results, q_tokens = smart_search(clean_q)
 
@@ -1576,8 +1654,11 @@ def _smart_search_reply(raw_query: str) -> dict:
         lines.append("☁️ TRÊN GOOGLE DRIVE (bao gồm cả 'Được chia sẻ với tôi'):")
         for m in gd_matches[:5]:
             icon = "📁" if m.get("is_dir") else "📄"
+            sz_str = f" — ⚖️ {m['size']}" if m.get("size") and m.get("size") != "-" else ""
             parent_str = f" ({m['parent_name']})" if m.get("parent_name") else ""
-            lines.append(f"• {icon} {m['name']}{parent_str}\n  🔗 {m.get('url', '')}")
+            lines.append(f"• {icon} {m['name']}{sz_str}{parent_str}\n  🔗 {m.get('url', '')}")
+            if m.get("path") and len(matches) < 5:
+                matches.append({"path": m["path"], "name": m["name"], "is_dir": bool(m.get("is_dir"))})
         lines.append("")
 
     if results:

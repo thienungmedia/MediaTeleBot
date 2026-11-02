@@ -1,6 +1,6 @@
 {
-  "version": "1.3.0",
-  "release_notes": "• Bản đóng gói Universal MacFileBot_Installer.pkg v1.3.0 tương thích 100% mọi phiên bản macOS & Python.\n• Tự động kiểm tra thực thi Python, xoá xung đột Webhook & chống treo TCC khi khởi động.\n• Tự động đảm bảo tiến trình chạy ngầm 24/7 và mở sẵn vị trí Python khi cấp quyền Trợ năng Zalo.\n• Tích hợp Spotlight (mdfind) giúp tìm kiếm file/folder siêu tốc trên mọi ổ đĩa.",
+  "version": "1.3.1",
+  "release_notes": "• Nâng cấp tìm kiếm & kiểm tra dung lượng Google Drive siêu tốc (tự động quét CloudStorage & đọc Cloud ID trực tiếp qua xattr mà không cần quyền Full Disk Access).\n• Bổ sung nút ☁️ Google Drive ngay tại Menu chính và trong Danh sách Ổ đĩa.\n• Hỗ trợ tìm kiếm tự nhiên trực tiếp khi nhắn tên dự án (VD: 'psc hằng cần', 'kiểm tra file psc hằng cần nặng bao nhiêu').",
   "files": {
     "bot.py": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/bot.py",
     "safe_fs.py": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/safe_fs.py",

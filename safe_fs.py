@@ -358,6 +358,281 @@ def format_gdrive_url(cloud_id: str, is_folder: bool) -> str:
     return f"https://drive.google.com/file/d/{cloud_id}/view?usp=sharing"
 
 
+_LIBC = None
+
+
+def get_gdrive_cloud_id_from_xattr(path: Path) -> str | None:
+    """
+    Read Google Drive Cloud ID directly from macOS FileProvider extended attributes
+    (com.google.drivefs.item-id#S). Works without Full Disk Access!
+    """
+    global _LIBC
+    try:
+        if _LIBC is None:
+            import ctypes
+            _LIBC = ctypes.CDLL("/usr/lib/libSystem.B.dylib")
+        import ctypes
+        buf = ctypes.create_string_buffer(256)
+        b_path = os.fsencode(str(path))
+        for attr in (b"com.google.drivefs.item-id#S", b"com.google.drivefs.item-id"):
+            n = _LIBC.getxattr(b_path, attr, buf, 256, 0, 0)
+            if n > 0:
+                cid = buf.raw[:n].decode("utf-8", "replace").strip()
+                if cid:
+                    return cid
+    except Exception:
+        pass
+    try:
+        res = subprocess.run(
+            ["xattr", "-p", "com.google.drivefs.item-id#S", str(path)],
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+        if res.returncode == 0 and res.stdout.strip():
+            return res.stdout.strip()
+    except Exception:
+        pass
+    return None
+
+
+def _query_gdrive_from_filesystem(
+    item_query: str, parent_hint: str | None = None, prefer_shared: bool = False
+) -> list[dict]:
+    """
+    Fast filesystem scanner for Google Drive (~/Library/CloudStorage/GoogleDrive-*)
+    that extracts cloud_id via xattr when DriveFS SQLite DB is blocked by macOS TCC.
+    """
+    gd_root = find_google_drive_root(auto_launch=False)
+    roots: list[Path] = []
+    seen_roots: set[str] = set()
+    if gd_root and gd_root.exists():
+        norm_r = unicodedata.normalize("NFC", str(gd_root))
+        seen_roots.add(norm_r)
+        roots.append(gd_root)
+    cs_dir = Path.home() / "Library" / "CloudStorage"
+    if cs_dir.exists():
+        try:
+            for entry in sorted(cs_dir.iterdir()):
+                if entry.name.startswith("GoogleDrive") and entry.is_dir():
+                    for sub in sorted(entry.iterdir()):
+                        if sub.is_dir() and not sub.name.startswith("."):
+                            norm_sub = unicodedata.normalize("NFC", str(sub))
+                            if norm_sub not in seen_roots:
+                                seen_roots.add(norm_sub)
+                                roots.append(sub)
+        except OSError:
+            pass
+    if not roots:
+        return []
+
+    q_norm = strip_accents(item_query.strip())
+    q_stem_norm = strip_accents(Path(item_query.strip()).stem)
+    q_tokens = [w for w in re.split(r"[^a-z0-9]+", q_norm) if w]
+    q_compact = "".join(re.findall(r"[a-z0-9]+", q_norm))
+    p_norm = strip_accents(parent_hint.strip()) if parent_hint else None
+    def_sub_norm = strip_accents(DEFAULT_GDRIVE_SUBFOLDER)
+
+    tier1_exact_in_parent = []
+    tier2_exact_any = []
+    tier3_partial_in_parent = []
+    tier4_partial_any = []
+    seen_paths = set()
+
+    def check_entry(entry_path: Path, is_folder: bool, parent_name: str, parent_path: Path) -> None:
+        s_path = unicodedata.normalize("NFC", str(entry_path))
+        if s_path in seen_paths:
+            return
+        title = entry_path.name
+        if title.startswith("."):
+            return
+        title_norm = strip_accents(title)
+        stem_norm = strip_accents(Path(title).stem)
+        title_compact = "".join(re.findall(r"[a-z0-9]+", title_norm))
+        title_tokens = [w for w in re.split(r"[^a-z0-9]+", title_norm) if w]
+        parent_title_norm = strip_accents(parent_name or "")
+
+        is_exact = (
+            (title_norm == q_norm)
+            or (not is_folder and stem_norm == q_norm)
+            or (not is_folder and stem_norm == q_stem_norm)
+            or (bool(q_compact) and q_compact == title_compact)
+        )
+        is_partial = False
+        if not is_exact:
+            if (q_norm in title_norm) or (bool(q_compact) and q_compact in title_compact):
+                is_partial = True
+            elif bool(q_tokens) and all(
+                (any(qt in tt for tt in title_tokens) or (qt in title_compact)) for qt in q_tokens
+            ):
+                is_partial = True
+
+        if not (is_exact or is_partial):
+            return
+
+        in_target_parent = False
+        if p_norm:
+            in_target_parent = (p_norm == parent_title_norm) or (p_norm in parent_title_norm)
+        else:
+            in_target_parent = (def_sub_norm in parent_title_norm)
+
+        if p_norm and not in_target_parent and not is_exact:
+            return
+
+        cid = get_gdrive_cloud_id_from_xattr(entry_path)
+        dedup_key = cid or s_path
+        if dedup_key in seen_paths:
+            return
+        seen_paths.add(s_path)
+        seen_paths.add(dedup_key)
+        pid = get_gdrive_cloud_id_from_xattr(parent_path)
+        is_synced = bool(cid and not str(cid).startswith("local_"))
+        file_size = None
+        if not is_folder:
+            try:
+                file_size = entry_path.stat().st_size
+            except OSError:
+                pass
+
+        item_info = {
+            "stable_id": None,
+            "cloud_id": cid or s_path,
+            "name": title,
+            "path": str(entry_path),
+            "is_dir": bool(is_folder),
+            "size": "-" if is_folder or file_size is None else format_size(int(file_size)),
+            "bytes": int(file_size) if (not is_folder and file_size is not None) else 0,
+            "file_count": 0 if is_folder else 1,
+            "dir_count": 0,
+            "parent_name": parent_name or "Drive của tôi",
+            "parent_id": pid,
+            "url": format_gdrive_url(cid, bool(is_folder)) if is_synced else None,
+            "parent_url": format_gdrive_url(pid, True) if (pid and not str(pid).startswith("local_")) else None,
+            "is_synced": is_synced,
+            "is_shared": False,
+        }
+
+        if is_exact and in_target_parent:
+            tier1_exact_in_parent.append(item_info)
+        elif is_exact:
+            tier2_exact_any.append(item_info)
+        elif in_target_parent:
+            tier3_partial_in_parent.append(item_info)
+        else:
+            tier4_partial_any.append(item_info)
+
+    t0 = time.time()
+    for r in roots:
+        l1_dirs: list[Path] = []
+        try:
+            with os.scandir(r) as it1:
+                for e1 in it1:
+                    if e1.name.startswith("."):
+                        continue
+                    is_d = e1.is_dir(follow_symlinks=False)
+                    p1 = Path(e1.path)
+                    check_entry(p1, is_d, r.name, r)
+                    if is_d:
+                        l1_dirs.append(p1)
+        except OSError:
+            continue
+
+        # Prioritize DEFAULT_GDRIVE_SUBFOLDER and parent_hint first
+        def _dir_priority(d_path: Path) -> int:
+            dn = strip_accents(d_path.name)
+            if p_norm and (p_norm == dn or p_norm in dn):
+                return 0
+            if def_sub_norm and (def_sub_norm == dn or def_sub_norm in dn):
+                return 1
+            return 2
+
+        l1_dirs.sort(key=_dir_priority)
+
+        for d1 in l1_dirs:
+            prio = _dir_priority(d1)
+            if prio == 2 and (time.time() - t0 > 1.5 or (tier1_exact_in_parent or tier2_exact_any or tier3_partial_in_parent)):
+                continue
+            l2_dirs: list[Path] = []
+            try:
+                with os.scandir(d1) as it2:
+                    for e2 in it2:
+                        if e2.name.startswith("."):
+                            continue
+                        is_d2 = e2.is_dir(follow_symlinks=False)
+                        p2 = Path(e2.path)
+                        check_entry(p2, is_d2, d1.name, d1)
+                        if is_d2 and prio < 2:
+                            l2_dirs.append(p2)
+            except OSError:
+                continue
+
+            if tier1_exact_in_parent or tier2_exact_any or tier3_partial_in_parent:
+                continue
+
+            for d2 in l2_dirs:
+                if time.time() - t0 > 1.5:
+                    break
+                try:
+                    with os.scandir(d2) as it3:
+                        for e3 in it3:
+                            if e3.name.startswith("."):
+                                continue
+                            is_d3 = e3.is_dir(follow_symlinks=False)
+                            check_entry(Path(e3.path), is_d3, d2.name, d2)
+                except OSError:
+                    continue
+
+    combined = tier1_exact_in_parent + tier2_exact_any + tier3_partial_in_parent + tier4_partial_any
+    for item in combined[:5]:
+        if item.get("is_dir") and item.get("path"):
+            sz_info = get_folder_size(item["path"])
+            if sz_info.get("ok"):
+                item["size"] = sz_info["size_human"]
+                item["bytes"] = sz_info["bytes"]
+                item["file_count"] = sz_info["file_count"]
+                item["dir_count"] = sz_info["dir_count"]
+    return combined
+
+
+def get_gdrive_item_size_from_db(stable_id: int) -> dict:
+    """Calculate total size, file count, and subfolder count of a Google Drive folder/file from DriveFS SQLite DB."""
+    dbs = get_drivefs_db_paths()
+    for db_path in dbs:
+        try:
+            conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=5)
+            rows = conn.execute(
+                """
+                WITH RECURSIVE descendants(stable_id) AS (
+                    SELECT ?
+                    UNION ALL
+                    SELECT sp.item_stable_id
+                    FROM stable_parents sp
+                    JOIN descendants d ON sp.parent_stable_id = d.stable_id
+                )
+                SELECT i.stable_id, i.is_folder, COALESCE(i.file_size, 0)
+                FROM descendants d
+                JOIN items i ON i.stable_id = d.stable_id
+                WHERE i.trashed = 0 AND i.is_tombstone = 0
+                """,
+                (stable_id,),
+            ).fetchall()
+            conn.close()
+            if rows:
+                total_bytes = sum(int(r[2] or 0) for r in rows if not r[1])
+                file_count = sum(1 for r in rows if not r[1])
+                dir_count = max(0, sum(1 for r in rows if r[1]) - 1)
+                return {
+                    "ok": True,
+                    "bytes": total_bytes,
+                    "size_human": format_size(total_bytes),
+                    "file_count": file_count,
+                    "dir_count": dir_count,
+                }
+        except Exception:
+            continue
+    return {"ok": False, "bytes": 0, "size_human": "0 B", "file_count": 0, "dir_count": 0}
+
+
 def query_gdrive_items(item_query: str, parent_hint: str | None = None, prefer_shared: bool = False) -> list[dict]:
     """
     Search Google DriveFS local metadata DB for files/folders matching item_query.
@@ -366,7 +641,7 @@ def query_gdrive_items(item_query: str, parent_hint: str | None = None, prefer_s
     """
     dbs = get_drivefs_db_paths()
     if not dbs:
-        return []
+        return _query_gdrive_from_filesystem(item_query, parent_hint=parent_hint, prefer_shared=prefer_shared)
 
     q_norm = strip_accents(item_query.strip())
     q_stem_norm = strip_accents(Path(item_query.strip()).stem)
@@ -490,7 +765,21 @@ def query_gdrive_items(item_query: str, parent_hint: str | None = None, prefer_s
             else:
                 tier4_partial_any.append(item_info)
 
-    return tier1_exact_in_parent + tier2_exact_any + tier3_partial_in_parent + tier4_partial_any
+    combined = tier1_exact_in_parent + tier2_exact_any + tier3_partial_in_parent + tier4_partial_any
+    if not combined:
+        return _query_gdrive_from_filesystem(item_query, parent_hint=parent_hint, prefer_shared=prefer_shared)
+    for item in combined[:10]:
+        if item.get("is_dir") and item.get("stable_id") is not None:
+            sz_db = get_gdrive_item_size_from_db(item["stable_id"])
+            if sz_db.get("ok"):
+                item["size"] = sz_db["size_human"]
+                item["bytes"] = sz_db["bytes"]
+                item["file_count"] = sz_db["file_count"]
+                item["dir_count"] = sz_db["dir_count"]
+        elif not item.get("is_dir"):
+            item["file_count"] = 1
+            item["dir_count"] = 0
+    return combined
 
 
 def _wait_and_notify_gdrive_link(dst_path: Path) -> None:
@@ -572,6 +861,30 @@ def list_drives() -> list[dict]:
                 })
             except OSError:
                 continue
+
+    gdrive_root = find_google_drive_root(auto_launch=False)
+    if gdrive_root and gdrive_root.exists():
+        already = any(str(gdrive_root) == d.get("path") or "googledrive" in d.get("name", "").lower() for d in drives)
+        if not already:
+            try:
+                usage = shutil.disk_usage(gdrive_root)
+                drives.append({
+                    "name": f"☁️ Google Drive ({gdrive_root.name})",
+                    "path": str(gdrive_root),
+                    "mount": str(gdrive_root),
+                    "total": format_size(usage.total),
+                    "used": format_size(usage.used),
+                    "free": format_size(usage.free),
+                })
+            except Exception:
+                drives.append({
+                    "name": f"☁️ Google Drive ({gdrive_root.name})",
+                    "path": str(gdrive_root),
+                    "mount": str(gdrive_root),
+                    "total": "Cloud",
+                    "used": "Cloud",
+                    "free": "Đang kết nối",
+                })
     return drives
 
 
