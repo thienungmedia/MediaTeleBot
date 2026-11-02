@@ -45,15 +45,13 @@ def _urlopen_robust(req, timeout=18):
 
 
 CONFIG_PATH = Path(__file__).parent.resolve() / "config.json"
-DEFAULT_MODEL = "gemini-3.1-flash-lite"
+DEFAULT_MODEL = "gemini-2.5-flash"
 FALLBACK_MODELS = [
-    "gemini-flash-latest",
-    "gemini-flash-lite-latest",
     "gemini-2.5-flash",
+    "gemini-flash-latest",
     "gemini-2.5-flash-lite",
+    "gemini-flash-lite-latest",
     "gemini-2.0-flash",
-    "gemini-3.5-flash-lite",
-    "gemini-3.5-flash",
 ]
 
 # Built-in fallback key (XOR-encoded so public repo scanners never flag or revoke it)
@@ -182,6 +180,8 @@ def _get_keys_and_model() -> tuple[list[str], str]:
             if cfg_k and cfg_k not in keys:
                 keys.append(cfg_k)
             model = cfg.get("gemini_model") or DEFAULT_MODEL
+            if model == "gemini-3.1-flash-lite":
+                model = DEFAULT_MODEL
     except Exception:
         pass
     builtin_k = _get_builtin_key()

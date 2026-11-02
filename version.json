@@ -1,5 +1,5 @@
 {
-  "version": "1.4.0",
+  "version": "1.4.1",
   "release_notes": "• Tích hợp sẵn trí tuệ nhân tạo Gemini AI (với bộ nhớ ngữ cảnh hội thoại):\n  - Tự động hiểu mọi cách nói tự nhiên, phương ngữ, tiếng lóng, câu nối tiếp và dịch chuẩn xác sang lệnh hệ thống (Tìm file, Kiểm tra dung lượng, Up Drive, Lấy link, Gửi Zalo, Note lịch).\n  - Hỗ trợ trò chuyện tự nhiên 'trên trời dưới đất' (tâm sự, viết caption trả khách, hỏi kỹ thuật quay dựng...) mà vẫn giữ nguyên chốt bảo vệ CẤM XOÁ FILE 100%.\n• Đồng bộ Lịch thông minh cho cả máy không cài Antigravity (Ghi vào Lịch macOS + Nút lưu Google Calendar 1 chạm).",
   "files": {
     "bot.py": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/bot.py",

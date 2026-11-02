@@ -1040,7 +1040,13 @@ def parse_and_execute_nl(text: str, chat_id: int = 0, _from_llm: bool = False) -
         return sr
 
     # 8. Search file/folder (smart search: ưu tiên SOURCE & FILM DATA & Google Drive)
-    find_match = re.search(r"^(?:tìm|tìm\s+kiếm|kiếm|kiểm\s+tra|check)\s+(.+)$", t, flags=re.IGNORECASE)
+    # Bỏ qua tìm kiếm ổ cứng nếu người dùng đang hỏi thông tin/kiến thức (vd: "tìm thông tin iphone 18 pro", "tìm hiểu...", "tìm cách...")
+    is_knowledge_search = bool(re.match(
+        r"^(?:tìm|tìm\s+kiếm|kiếm|kiểm\s+tra|check)\s+(?:thông\s+tin|hiểu|cách|ý\s+tưởng|giá|cấu\s+hình|thông\s+số|địa\s+chỉ|quán|tin\s+tức|bài\s+viết|caption|stt|status|lời\s+bài\s+hát)\b",
+        t,
+        flags=re.IGNORECASE,
+    ))
+    find_match = None if is_knowledge_search else re.search(r"^(?:tìm|tìm\s+kiếm|kiếm|kiểm\s+tra|check)\s+(.+)$", t, flags=re.IGNORECASE)
     if find_match:
         sr = _smart_search_reply(find_match.group(1))
         if sr.get("matches"):
