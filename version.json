@@ -1,11 +1,12 @@
 {
-  "version": "1.1.0",
-  "release_notes": "• Cài đặt sâu Native vào macOS (~/Library/Application Support/MacFileBot) chạy ngầm 24/7 độc lập hoàn toàn.\n• Bộ ứng dụng cài đặt 1-Click: Cài Đặt MacFileBot.app & MacFileBot Manager.app có giao diện cửa sổ macOS.\n• Cơ chế xử lý SSL Fallback tránh lỗi chứng chỉ trên Python 3.9 có sẵn của Apple.\n• Giữ nguyên 100% tính năng cấm xoá file, tìm kiếm ổ cứng ngoài & Google Drive, Zalo sender.",
+  "version": "1.2.0",
+  "release_notes": "• Hỗ trợ Âm Lịch Việt Nam chuẩn thiên văn: Tự động nhận diện và quy đổi ngày âm sang dương lịch để note Google Calendar.\n• Tự động tính đúng trường hợp âm lịch năm nay rơi sang dương lịch năm sau (ví dụ: 25/11 âm Bính Ngọ -> 02/01/2027 dương).\n• Hỗ trợ tra cứu lịch theo ngày âm lịch (ví dụ: '25/11 âm có lịch gì không').\n• Kèm file hướng dẫn lấy Token & Gemini API (HuongDanLayMa.html) và bộ cài App 1-Click native.",
   "files": {
     "bot.py": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/bot.py",
     "safe_fs.py": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/safe_fs.py",
     "nl_engine.py": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/nl_engine.py",
     "llm_intent.py": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/llm_intent.py",
+    "lunar_calendar.py": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/lunar_calendar.py",
     "zalo_sender.py": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/zalo_sender.py",
     "updater.py": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/updater.py",
     "install_core.py": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/install_core.py",

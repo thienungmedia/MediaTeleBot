@@ -50,6 +50,7 @@ REQUIRED_FILES = [
     "GoCaiDat.command",
     "KiemTraLoi.command",
     "HuongDanLayMa.html",
+    "lunar_calendar.py",
 ]
 
 

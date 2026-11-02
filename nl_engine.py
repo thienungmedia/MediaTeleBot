@@ -947,17 +947,75 @@ def parse_and_execute_nl(text: str, chat_id: int = 0, _from_llm: bool = False) -
     }
 
 
-GCALENDAR_BIN = "/Users/thienung/.gemini/antigravity/bin/gcalendar"
+GCALENDAR_BIN = (
+    "/Users/thienung/.gemini/antigravity/bin/gcalendar"
+    if os.path.exists("/Users/thienung/.gemini/antigravity/bin/gcalendar")
+    else (shutil.which("gcalendar") or "/Users/thienung/.gemini/antigravity/bin/gcalendar")
+)
 
 
 def _try_note_calendar(t: str) -> dict | None:
     """
-    Parse "[note|note lịch|ghi lịch|thêm lịch|lịch] DDMM nội dung" (or DD/MM) and create an
-    all-day Google Calendar event on that day of the current year. Returns None if not a calendar note.
+    Parse "[note|note lịch|ghi lịch|thêm lịch|lịch] DDMM nội dung" (hoặc DD/MM, hoặc ngày ÂM LỊCH)
+    và tự động tạo all-day event trên Google Calendar.
+    Hỗ trợ ÂM LỊCH: tự động quy đổi chính xác sang Dương lịch (kể cả trường hợp âm lịch
+    năm nay rơi sang dương lịch năm sau).
     """
     import datetime
     import subprocess
+    import lunar_calendar
 
+    # 1. KIỂM TRA XEM CÓ PHẢI YÊU CẦU THEO ÂM LỊCH KHÔNG
+    lunar_info = lunar_calendar.parse_lunar_in_text(t)
+    if lunar_info and re.search(r"\b(note|ghi|thêm|them|tạo|tao|lịch|lich)\b", t, flags=re.IGNORECASE):
+        d = lunar_info["solar_start"]
+        d_end = lunar_info["solar_end"]
+        l_label = lunar_info["lunar_label"]
+        raw_clean = lunar_info["clean_content"]
+        
+        # Lọc bỏ các từ tiền tố "thêm lịch", "note lịch", "ghi lịch"...
+        content = re.sub(
+            r"^(?:(?:note|ghi|thêm|them|tạo|tao)\s+(?:lịch|lich)|note|lịch|lich)\s*",
+            "",
+            raw_clean,
+            flags=re.IGNORECASE,
+        ).strip()
+        if not content:
+            content = f"Lịch âm {l_label}"
+
+        start = d.isoformat()
+        end = (d_end + datetime.timedelta(days=1)).isoformat()
+        if not Path(GCALENDAR_BIN).exists():
+            return {"handled": True, "reply": "📅 Máy này chưa cấu hình Google Calendar CLI."}
+
+        event_summary = f"{content} (Âm lịch: {l_label})"
+        try:
+            res = subprocess.run(
+                [GCALENDAR_BIN, "mutate", "create", "--summary", event_summary, "--start", start, "--end", end, "--all-day"],
+                capture_output=True, text=True, timeout=60,
+            )
+        except Exception as e:
+            return {"handled": True, "reply": f"❌ Không gọi được Google Lịch: {e}"}
+
+        out = (res.stdout or "") + (res.stderr or "")
+        if res.returncode != 0:
+            return {"handled": True, "reply": f"❌ Không note được lịch:\n{out.strip()[:600]}"}
+
+        link_m = re.search(r"Link:\s*(\S+)", out)
+        when_solar = d.strftime('%d/%m/%Y') if d == d_end else f"{d.strftime('%d/%m/%Y')} → {d_end.strftime('%d/%m/%Y')}"
+        year_note = " (Năm sau)" if d.year > datetime.date.today().year else ""
+        
+        reply = (
+            f"📅 ĐÃ NOTE LỊCH GOOGLE (TỰ ĐỘNG ĐỔI TỪ ÂM LỊCH):\n"
+            f"• 🌙 Âm lịch: {l_label}\n"
+            f"• ☀️ Dương lịch: {when_solar}{year_note}\n"
+            f"• 📝 Nội dung: {content}"
+        )
+        if link_m:
+            reply += f"\n🔗 {link_m.group(1)}"
+        return {"handled": True, "reply": reply}
+
+    # 2. XỬ LÝ LỊCH DƯƠNG THÔNG THƯỜNG
     pm = re.match(
         r"^(?:(?:note|ghi|thêm|them|tạo|tao)\s+(?:lịch|lich)|note|lịch|lich)?\s*(\S+)\s+(.+)$",
         t.strip(),
@@ -1050,9 +1108,20 @@ def _fmt_event_time(ev: dict) -> tuple[str, str]:
 def _parse_query_range(tl: str):
     """Extract (start_date, end_date_inclusive, label) from a Vietnamese calendar question."""
     import datetime
+    import lunar_calendar
 
     today = datetime.date.today()
     td = datetime.timedelta
+
+    # 1. Hỗ trợ tra cứu theo ÂM LỊCH (ví dụ: "25/11 âm có lịch gì", "ngày 15/8 âm lịch tôi có bận không")
+    lunar_q = lunar_calendar.parse_lunar_in_text(tl)
+    if lunar_q:
+        s_start = lunar_q["solar_start"]
+        s_end = lunar_q["solar_end"]
+        l_label = lunar_q["lunar_label"]
+        when_lbl = f"{s_start:%d/%m/%Y}" if s_start == s_end else f"{s_start:%d/%m/%Y}→{s_end:%d/%m/%Y}"
+        year_note = " NĂM SAU" if s_start.year > today.year else ""
+        return s_start, s_end, f"NGÀY {when_lbl}{year_note} (ÂM LỊCH: {l_label})"
 
     def qyear(day: int, month: int) -> int:
         try:

@@ -47,8 +47,8 @@ Nhiệm vụ: đọc câu tiếng Việt tự nhiên của người dùng và vi
 theo các mẫu sau. Hôm nay là {today} ({weekday}).
 
 MẪU LỆNH CHUẨN:
-1. Xem lịch:      "<mốc thời gian> có lịch gì"   (mốc: hôm nay | ngày mai | ngày mốt | hôm qua | tuần này | tuần sau | ngày DD/MM | tháng M)
-2. Note lịch:     "note lịch DDMM nội dung"   hoặc nhiều ngày "note lịch D1-D2/M nội dung"   (vd: note lịch 1610 psc a Thăng)
+1. Xem lịch:      "<mốc thời gian> có lịch gì"   (mốc: hôm nay | ngày mai | ngày mốt | hôm qua | tuần này | tuần sau | ngày DD/MM | ngày DD/MM âm | tháng M)
+2. Note lịch:     "note lịch DDMM nội dung" hoặc "note lịch DD/MM âm nội dung" (nếu là Âm lịch). (vd: note lịch 1610 psc a Thăng, note lịch 25/11 âm cưới a Nam)
 3. Tìm file/thư mục:
    - Tìm bình thường: "tìm thư mục <từ khoá>" hoặc "tìm file <từ khoá>"
    - Tìm trong Google Drive: "tìm thư mục <từ khoá> trong google drive"
@@ -69,6 +69,7 @@ QUY TẮC:
 - Giữ nguyên mã số ngày tháng và từ khoá chính (như 2510, huynh trung hiep, 2810, 2410).
 - Tách bạch rõ ràng đâu là tên file/thư mục cần gửi và đâu là tên người nhận (ví dụ "Hoàng Dựng", "anh Thăng").
 - Ngày trong "note lịch" viết DDMM (vd 16/10 -> 1610).
+- Nếu người dùng nói ngày Âm lịch (có chữ "âm", "âm lịch", "al"), BẮT BUỘC giữ nguyên chữ "âm" trong lệnh chuẩn (ví dụ "note lịch 25/11 âm cưới a Nam").
 - TUYỆT ĐỐI không tạo lệnh xoá. Nếu người dùng yêu cầu xoá/format/thao tác nguy hiểm, trả về: UNKNOWN
 - Nếu không thể hiểu hoặc không thuộc các mẫu trên, trả về: UNKNOWN
 """
