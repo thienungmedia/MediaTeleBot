@@ -1,6 +1,6 @@
 {
-  "version": "1.3.1",
-  "release_notes": "• Nâng cấp tìm kiếm & kiểm tra dung lượng Google Drive siêu tốc (tự động quét CloudStorage & đọc Cloud ID trực tiếp qua xattr mà không cần quyền Full Disk Access).\n• Bổ sung nút ☁️ Google Drive ngay tại Menu chính và trong Danh sách Ổ đĩa.\n• Hỗ trợ tìm kiếm tự nhiên trực tiếp khi nhắn tên dự án (VD: 'psc hằng cần', 'kiểm tra file psc hằng cần nặng bao nhiêu').",
+  "version": "1.3.2",
+  "release_notes": "• Tích hợp đồng bộ Lịch cho mọi máy Mac không cài Antigravity: Tự động ghi vào ứng dụng Lịch (Calendar.app) của macOS + đính kèm nút [📅 Lưu vào Google Calendar (1 chạm)] ngay trên Telegram.\n• Lọc sạch các cụm từ 'vào google calendar' khỏi nội dung sự kiện.\n• Nâng cấp tìm kiếm & kiểm tra dung lượng Google Drive siêu tốc (đọc Cloud ID trực tiếp qua xattr).",
   "files": {
     "bot.py": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/bot.py",
     "safe_fs.py": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/safe_fs.py",
