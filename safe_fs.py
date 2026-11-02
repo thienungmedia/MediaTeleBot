@@ -25,8 +25,34 @@ import threading
 import time
 import unicodedata
 import urllib.request
+import ssl
 from pathlib import Path
 from datetime import datetime
+
+def _get_ssl_context():
+    try:
+        ctx = ssl.create_default_context()
+        if os.path.exists("/etc/ssl/cert.pem"):
+            ctx.load_verify_locations("/etc/ssl/cert.pem")
+        return ctx
+    except Exception:
+        pass
+    try:
+        return ssl._create_unverified_context()
+    except Exception:
+        return None
+
+def _urlopen_robust(req, timeout=15):
+    ctx = _get_ssl_context()
+    try:
+        if ctx:
+            return urllib.request.urlopen(req, context=ctx, timeout=timeout)
+        return urllib.request.urlopen(req, timeout=timeout)
+    except Exception as e:
+        if "CERTIFICATE_VERIFY_FAILED" in str(e) or "certificate verify failed" in str(e):
+            unverified = ssl._create_unverified_context()
+            return urllib.request.urlopen(req, context=unverified, timeout=timeout)
+        raise
 
 BASE_DIR = Path(__file__).parent.resolve()
 CONFIG_PATH = BASE_DIR / "config.json"
@@ -88,7 +114,7 @@ def fetch_gdrive_title_from_web(cloud_id: str) -> str | None:
     url = f"https://drive.google.com/drive/folders/{cloud_id}"
     req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
     try:
-        with urllib.request.urlopen(req, timeout=4) as resp:
+        with _urlopen_robust(req, timeout=4) as resp:
             html = resp.read().decode("utf-8", errors="ignore")
             m = re.search(r'<meta property="og:title" content="([^"]+)"', html)
             if m:
@@ -263,7 +289,7 @@ def send_telegram_notification(text: str, reply_markup: dict | None = None) -> N
             payload["reply_markup"] = reply_markup
         data = json.dumps(payload).encode("utf-8")
         req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
-        with urllib.request.urlopen(req, timeout=15):
+        with _urlopen_robust(req, timeout=15):
             pass
     except Exception:
         pass

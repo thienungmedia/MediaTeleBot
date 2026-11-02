@@ -13,11 +13,37 @@ import subprocess
 import sys
 import time
 import urllib.request
+import ssl
 from pathlib import Path
+
+def _get_ssl_context():
+    try:
+        ctx = ssl.create_default_context()
+        if os.path.exists("/etc/ssl/cert.pem"):
+            ctx.load_verify_locations("/etc/ssl/cert.pem")
+        return ctx
+    except Exception:
+        pass
+    try:
+        return ssl._create_unverified_context()
+    except Exception:
+        return None
+
+def _urlopen_robust(req, timeout=20):
+    ctx = _get_ssl_context()
+    try:
+        if ctx:
+            return urllib.request.urlopen(req, context=ctx, timeout=timeout)
+        return urllib.request.urlopen(req, timeout=timeout)
+    except Exception as e:
+        if "CERTIFICATE_VERIFY_FAILED" in str(e) or "certificate verify failed" in str(e):
+            unverified = ssl._create_unverified_context()
+            return urllib.request.urlopen(req, context=unverified, timeout=timeout)
+        raise
 
 BASE_DIR = Path(__file__).parent.resolve()
 CONFIG_PATH = BASE_DIR / "config.json"
-CURRENT_VERSION = "1.0.4"
+CURRENT_VERSION = "1.1.0"
 
 DEFAULT_MANIFEST_URL = "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/version.json"
 
@@ -52,7 +78,7 @@ def check_for_updates() -> dict:
         headers={"User-Agent": "MacFileBot-Updater/1.0", "Cache-Control": "no-cache"},
     )
     try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        with _urlopen_robust(req, timeout=10) as resp:
             data = json.loads(resp.read().decode("utf-8"))
     except Exception as e:
         return {"has_update": False, "error": str(e)}
@@ -100,7 +126,7 @@ def perform_update(manifest: dict) -> dict:
                 file_url,
                 headers={"User-Agent": "MacFileBot-Updater/1.0", "Cache-Control": "no-cache"},
             )
-            with urllib.request.urlopen(req, timeout=20) as resp:
+            with _urlopen_robust(req, timeout=20) as resp:
                 content = resp.read()
 
             tmp_path = BASE_DIR / f"{filename}.tmp_update"

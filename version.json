@@ -1,6 +1,6 @@
 {
-  "version": "1.0.4",
-  "release_notes": "• Tương thích 100% với Python 3.9 có sẵn trên macOS (sửa lỗi Type hint str | None).\n• Thêm công cụ 1-Click KiemTraLoi.command để tự động chẩn đoán và chạy trực tiếp bot.\n• CaiDat.command tự động phòng chống lỗi bảo mật macOS TCC khi giải nén trong thư mục Downloads.",
+  "version": "1.1.0",
+  "release_notes": "• Cài đặt sâu Native vào macOS (~/Library/Application Support/MacFileBot) chạy ngầm 24/7 độc lập hoàn toàn.\n• Bộ ứng dụng cài đặt 1-Click: Cài Đặt MacFileBot.app & MacFileBot Manager.app có giao diện cửa sổ macOS.\n• Cơ chế xử lý SSL Fallback tránh lỗi chứng chỉ trên Python 3.9 có sẵn của Apple.\n• Giữ nguyên 100% tính năng cấm xoá file, tìm kiếm ổ cứng ngoài & Google Drive, Zalo sender.",
   "files": {
     "bot.py": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/bot.py",
     "safe_fs.py": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/safe_fs.py",
@@ -8,9 +8,12 @@
     "llm_intent.py": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/llm_intent.py",
     "zalo_sender.py": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/zalo_sender.py",
     "updater.py": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/updater.py",
+    "install_core.py": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/install_core.py",
     "CaiDat.command": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/CaiDat.command",
-    "KiemTraLoi.command": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/KiemTraLoi.command",
+    "KhoiDongLai.command": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/KhoiDongLai.command",
     "DoiThuMucDrive.command": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/DoiThuMucDrive.command",
+    "KiemTraLoi.command": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/KiemTraLoi.command",
+    "GoCaiDat.command": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/GoCaiDat.command",
     "HUONG_DAN_NHANH.txt": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/HUONG_DAN_NHANH.txt",
     "README.md": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/README.md"
   }

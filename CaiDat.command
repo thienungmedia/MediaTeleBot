@@ -11,36 +11,30 @@ echo "• 🔍 Tìm kiếm file/thư mục thông minh khắp ổ cứng ngoài 
 echo "• ☁️ Upload lên Google Drive và tự động lấy link chia sẻ gửi khách."
 echo "• 💬 Soạn và gửi link qua Zalo tự động (chỉ cần bấm xác nhận)."
 echo "• 🤖 Tích hợp AI Gemini hiểu câu nói tiếng Việt tự nhiên."
+echo "• ⚙️ Cài sâu vào hệ thống: Chạy ngầm Native 24/7 (kể cả khi khởi động lại máy)."
 echo "=================================================================="
 echo ""
 
-# 1. Tự động kiểm tra và xử lý nếu chạy trong thư mục Downloads
-CURRENT_DIR="$(pwd)"
-if [[ "$CURRENT_DIR" == *"/Downloads"* ]]; then
-    SAFE_DIR="$HOME/MacFileBot_Assistant"
-    echo "⚠️ PHÁT HIỆN: Thư mục đang nằm trong mục 'Downloads' (Tải về)!"
-    echo "Hệ điều hành macOS sẽ CHẶN quyền chạy ngầm của các file trong Downloads."
-    echo "👉 Đang tự động chuyển sang thư mục an toàn: $SAFE_DIR ..."
-    mkdir -p "$SAFE_DIR"
-    cp -R "$CURRENT_DIR/"* "$SAFE_DIR/"
-    cd "$SAFE_DIR"
-    CURRENT_DIR="$SAFE_DIR"
-    echo "✅ Đã chuyển vị trí cài đặt thành công: $CURRENT_DIR"
-    echo ""
-fi
-
 # Xoá cờ kiểm duyệt bảo mật com.apple.quarantine của macOS
-xattr -dr com.apple.quarantine "$CURRENT_DIR" 2>/dev/null
-chmod +x *.command 2>/dev/null
+xattr -dr com.apple.quarantine "$(pwd)" 2>/dev/null
+chmod +x *.command *.py 2>/dev/null
 
-# 2. Tìm Python 3
+# 1. Tìm Python 3
 PYTHON_PATH=""
 if [ -x "/Library/Frameworks/Python.framework/Versions/3.14/bin/python3" ]; then
     PYTHON_PATH="/Library/Frameworks/Python.framework/Versions/3.14/bin/python3"
+elif [ -x "/Library/Frameworks/Python.framework/Versions/3.13/bin/python3" ]; then
+    PYTHON_PATH="/Library/Frameworks/Python.framework/Versions/3.13/bin/python3"
+elif [ -x "/Library/Frameworks/Python.framework/Versions/3.12/bin/python3" ]; then
+    PYTHON_PATH="/Library/Frameworks/Python.framework/Versions/3.12/bin/python3"
+elif [ -x "/Library/Frameworks/Python.framework/Versions/3.11/bin/python3" ]; then
+    PYTHON_PATH="/Library/Frameworks/Python.framework/Versions/3.11/bin/python3"
 elif [ -x "/opt/homebrew/bin/python3" ]; then
     PYTHON_PATH="/opt/homebrew/bin/python3"
 elif [ -x "/usr/local/bin/python3" ]; then
     PYTHON_PATH="/usr/local/bin/python3"
+elif [ -x "/usr/bin/python3" ]; then
+    PYTHON_PATH="/usr/bin/python3"
 elif command -v python3 >/dev/null 2>&1; then
     PYTHON_PATH=$(command -v python3)
 fi
@@ -56,10 +50,7 @@ fi
 echo "✅ Đã tìm thấy Python: $PYTHON_PATH"
 echo ""
 
-# 3. Nhập cấu hình
-PLIST_NAME="com.macfilebot.telegrambot"
-PLIST_PATH="$HOME/Library/LaunchAgents/${PLIST_NAME}.plist"
-
+# 2. Nhập cấu hình
 echo "------------------------------------------------------------------"
 echo "📋 BƯỚC 1: CẤU HÌNH BOT TELEGRAM"
 echo "⚠️ LƯU Ý QUAN TRỌNG: Mỗi người/máy Mac PHẢI dùng 1 con Bot riêng!"
@@ -71,7 +62,12 @@ EXISTING_TOKEN=""
 EXISTING_KEY=""
 EXISTING_FOLDER="PRODUCTION"
 
-if [ -f "config.json" ]; then
+TARGET_CONFIG="$HOME/Library/Application Support/MacFileBot/config.json"
+if [ -f "$TARGET_CONFIG" ]; then
+    EXISTING_TOKEN=$("$PYTHON_PATH" -c "import json; cfg=json.load(open('$TARGET_CONFIG')); print(cfg.get('bot_token',''))" 2>/dev/null)
+    EXISTING_KEY=$("$PYTHON_PATH" -c "import json; cfg=json.load(open('$TARGET_CONFIG')); print(cfg.get('gemini_api_key',''))" 2>/dev/null)
+    EXISTING_FOLDER=$("$PYTHON_PATH" -c "import json; cfg=json.load(open('$TARGET_CONFIG')); print(cfg.get('default_gdrive_folder','PRODUCTION'))" 2>/dev/null)
+elif [ -f "config.json" ]; then
     EXISTING_TOKEN=$("$PYTHON_PATH" -c "import json; cfg=json.load(open('config.json')); print(cfg.get('bot_token',''))" 2>/dev/null)
     EXISTING_KEY=$("$PYTHON_PATH" -c "import json; cfg=json.load(open('config.json')); print(cfg.get('gemini_api_key',''))" 2>/dev/null)
     EXISTING_FOLDER=$("$PYTHON_PATH" -c "import json; cfg=json.load(open('config.json')); print(cfg.get('default_gdrive_folder','PRODUCTION'))" 2>/dev/null)
@@ -94,27 +90,15 @@ while [ -z "$BOT_USERNAME" ]; do
     fi
 
     echo "📡 Đang kiểm tra mã Bot Token với Telegram..."
-    BOT_CHECK=$("$PYTHON_PATH" -c "
-import urllib.request, json, sys
-token = '''$BOT_TOKEN'''.strip()
-url = f'https://api.telegram.org/bot{token}/getMe'
-try:
-    req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-    with urllib.request.urlopen(req, timeout=10) as resp:
-        data = json.loads(resp.read().decode('utf-8'))
-        if data.get('ok'):
-            print(data['result'].get('username', ''))
-        else:
-            sys.exit(1)
-except Exception:
-    sys.exit(1)
-" 2>/dev/null)
-
-    if [ -n "$BOT_CHECK" ]; then
-        BOT_USERNAME="$BOT_CHECK"
+    BOT_CHECK=$("$PYTHON_PATH" install_core.py --verify-token "$BOT_TOKEN" 2>/dev/null)
+    IS_OK=$("$PYTHON_PATH" -c "import json; data=json.loads('''$BOT_CHECK'''); print('1' if data.get('ok') else '0')" 2>/dev/null)
+    
+    if [ "$IS_OK" = "1" ]; then
+        BOT_USERNAME=$("$PYTHON_PATH" -c "import json; data=json.loads('''$BOT_CHECK'''); print(data['result'].get('username',''))" 2>/dev/null)
         echo "✅ KẾT NỐI THÀNH CÔNG với Bot: @$BOT_USERNAME"
     else
-        echo "❌ Lỗi: Mã Bot Token không hợp lệ hoặc máy không có mạng!"
+        ERR_MSG=$("$PYTHON_PATH" -c "import json; data=json.loads('''$BOT_CHECK'''); print(data.get('error','Lỗi không xác định'))" 2>/dev/null)
+        echo "❌ Lỗi: $ERR_MSG"
         echo "👉 Bạn hãy kiểm tra lại mã Token lấy từ @BotFather (ví dụ: 123456789:ABCdef...)"
         EXISTING_TOKEN=""
     fi
@@ -143,94 +127,35 @@ echo "------------------------------------------------------------------"
 read -p "Dán Link hoặc Nhập Tên thư mục [Mặc định: $EXISTING_FOLDER]: " INPUT_FOLDER
 GDRIVE_FOLDER="${INPUT_FOLDER:-$EXISTING_FOLDER}"
 
-# Tạo config.json và giải phóng owner_id để người cài đặt nhắn /start là nhận làm chủ nhân ngay
-"$PYTHON_PATH" -c "
-import json, sys
-sys.path.append('.')
-import safe_fs
-
-cfg = safe_fs._read_json(safe_fs.CONFIG_PATH)
-cfg['bot_token'] = '''$BOT_TOKEN'''.strip()
-cfg['gemini_api_key'] = '''$GEMINI_KEY'''.strip()
-cfg['gemini_model'] = 'gemini-3.1-flash-lite'
-cfg['owner_id'] = None
-cfg['chat_id'] = None
-cfg['username'] = ''
-if 'last_update_id' not in cfg:
-    cfg['last_update_id'] = 0
-
-safe_fs._write_json(safe_fs.CONFIG_PATH, cfg)
-
-# Cập nhật thư mục upload Google Drive qua hàm phân giải link/tên
-res = safe_fs.set_default_gdrive_folder('''$GDRIVE_FOLDER''')
-print('📁 Thư mục upload mặc định: ' + str(res.get('folder_name', '''$GDRIVE_FOLDER''')))
-if res.get('folder_url'):
-    print('🔗 Link Google Drive: ' + str(res['folder_url']))
-"
-
-chmod 600 config.json
-chmod +x bot.py safe_fs.py nl_engine.py llm_intent.py zalo_sender.py no_delete_guard.py updater.py 2>/dev/null
-
 echo ""
-echo "⚙️ Đang thiết lập dịch vụ chạy ngầm LaunchAgent cho máy Mac..."
-mkdir -p "$HOME/Library/LaunchAgents"
+echo "⚙️ Đang cài đặt sâu vào hệ thống (~/Library/Application Support/MacFileBot)..."
+INSTALL_OUTPUT=$("$PYTHON_PATH" install_core.py "$BOT_TOKEN" "$GEMINI_KEY" "$GDRIVE_FOLDER")
 
-# Dừng dịch vụ cũ nếu đang chạy
-launchctl unload "$PLIST_PATH" 2>/dev/null
-pkill -f "${CURRENT_DIR}/bot.py" 2>/dev/null
+IS_SUCCESS=$("$PYTHON_PATH" -c "import json; data=json.loads('''$INSTALL_OUTPUT'''); print('1' if data.get('ok') else '0')" 2>/dev/null)
 
-cat <<EOF > "$PLIST_PATH"
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key>
-    <string>${PLIST_NAME}</string>
-    <key>ProgramArguments</key>
-    <array>
-        <string>${PYTHON_PATH}</string>
-        <string>${CURRENT_DIR}/bot.py</string>
-    </array>
-    <key>WorkingDirectory</key>
-    <string>${CURRENT_DIR}</string>
-    <key>RunAtLoad</key>
-    <true/>
-    <key>KeepAlive</key>
-    <true/>
-    <key>StandardOutPath</key>
-    <string>${CURRENT_DIR}/bot_service.log</string>
-    <key>StandardErrorPath</key>
-    <string>${CURRENT_DIR}/bot_service.err.log</string>
-    <key>EnvironmentVariables</key>
-    <dict>
-        <key>PATH</key>
-        <string>/Library/Frameworks/Python.framework/Versions/3.14/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin</string>
-        <key>HOME</key>
-        <string>${HOME}</string>
-        <key>PYTHONUNBUFFERED</key>
-        <string>1</string>
-    </dict>
-</dict>
-</plist>
-EOF
+if [ "$IS_SUCCESS" != "1" ]; then
+    ERR_DETAIL=$("$PYTHON_PATH" -c "import json; data=json.loads('''$INSTALL_OUTPUT'''); print(data.get('error','Lỗi không xác định'))" 2>/dev/null)
+    echo "❌ LỖI CÀI ĐẶT: $ERR_DETAIL"
+    read -p "Nhấn Enter để thoát..."
+    exit 1
+fi
 
-launchctl load "$PLIST_PATH" 2>/dev/null
-launchctl kickstart -k "gui/$(id -u)/${PLIST_NAME}" 2>/dev/null
+TARGET_DIR=$("$PYTHON_PATH" -c "import json; data=json.loads('''$INSTALL_OUTPUT'''); print(data.get('target_dir',''))" 2>/dev/null)
+FOLDER_NAME=$("$PYTHON_PATH" -c "import json; data=json.loads('''$INSTALL_OUTPUT'''); print(data.get('folder',''))" 2>/dev/null)
 
 echo ""
 echo "=================================================================="
 echo "🎉 CHÚC MỪNG! ĐÃ CÀI ĐẶT THÀNH CÔNG TRỢ LÝ QUẢN LÝ FILE MAC! 🎉"
 echo "=================================================================="
-echo "Bot đang chạy ngầm trên máy Mac của bạn (kể cả khi khởi động lại máy)."
+echo "📍 Vị trí cài đặt an toàn: $TARGET_DIR"
+echo "📁 Thư mục upload Google Drive: $FOLDER_NAME"
+echo "⚙️ Dịch vụ đang CHẠY NGẦM NATIVE 24/7 (Kể cả khi tắt máy khởi động lại)."
 echo ""
-echo "👉 BƯỚC KÍCH HOẠT (RẤT QUAN TRỌNG):"
+echo "👉 BƯỚC KÍCH HOẠT (DUY NHẤT 1 LẦN):"
 echo "1. Mở ứng dụng Telegram trên điện thoại hoặc máy tính."
 echo "2. Tìm kiếm đúng con Bot của bạn: @$BOT_USERNAME"
 echo "3. Bấm START (hoặc gửi tin nhắn: /start)"
 echo "4. Bot sẽ tự động NHẬN DIỆN BẠN LÀ CHỦ NHÂN DUY NHẤT và khoá bảo mật."
-echo ""
-echo "💡 NẾU BẠN GỬI /start MÀ KHÔNG THẤY TRẢ LỜI:"
-echo "• Click đúp vào file 'KiemTraLoi.command' trong thư mục này để xem trực tiếp lỗi!"
 echo "=================================================================="
 echo ""
 read -p "Nhấn Enter để hoàn tất..."

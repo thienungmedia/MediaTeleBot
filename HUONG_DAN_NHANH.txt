@@ -1,5 +1,5 @@
 ==================================================================
-🎬 HƯỚNG DẪN CÀI ĐẶT NHANH (MAC FILE BOT)
+🎬 HƯỚNG DẪN CÀI ĐẶT NHANH (MAC FILE BOT - BẢN NATIVE MACOS)
 ==================================================================
 
 ⚠️ 2 ĐIỀU KIỆN QUAN TRỌNG TRƯỚC KHI DÙNG:
@@ -11,22 +11,32 @@
         ➔ Bật "Ngăn chặn tự động chuyển sang chế độ ngủ khi màn hình tắt".
       • Hoặc cài app miễn phí "Amphetamine" trên Mac App Store.
 
+------------------------------------------------------------------
 1. CHUẨN BỊ TRƯỚC KHI CÀI:
-   • Mã Bot Token Telegram (Lấy từ @BotFather trên Telegram).
-   • Mã Gemini API Key (Lấy miễn phí tại: https://aistudio.google.com/apikey).
-   (Chi tiết từng bước kèm ảnh xem file README.md)
+   • Mã Bot Token Telegram (Lấy miễn phí trong 30 giây bằng cách chat /newbot với @BotFather).
+   • Mã Gemini API Key (Tùy chọn, lấy tại: https://aistudio.google.com/apikey).
 
-2. CÀI ĐẶT TRONG 10 GIÂY:
-   • Bấm đúp chuột vào file: CaiDat.command
-   • Dán Bot Token và Gemini API Key theo hướng dẫn trên màn hình.
+------------------------------------------------------------------
+2. CÀI ĐẶT 1-CLICK DẠNG APP:
+   • Bấm đúp vào ứng dụng: "Cài Đặt MacFileBot.app"
+     (Hoặc mở file "CaiDat.command" nếu thích giao diện dòng lệnh).
+   • Cửa sổ giao diện Mac hiện lên ➔ Dán Bot Token ➔ Bấm Tiếp tục.
+   • Hệ thống tự động cài sâu vào máy (~/Library/Application Support/MacFileBot)
+     và kích hoạt chạy ngầm native 24/7 (tự mở khi bật máy).
 
+------------------------------------------------------------------
 3. KÍCH HOẠT:
-   • Mở Telegram, tìm con bot bạn vừa tạo và gửi: /start
-   • Bot sẽ tự động nhận diện bạn là CHỦ NHÂN DUY NHẤT!
-   • 💡 NẾU GỬI /start KHÔNG THẤY TRẢ LỜI:
-     Bấm đúp vào file "KiemTraLoi.command" để kiểm tra lỗi và chạy trực tiếp!
+   • Bấm nút "Mở Telegram Ngay" trên cửa sổ thông báo (hoặc tìm đúng tên bot).
+   • Bấm START (hoặc gửi /start).
+   • Bot sẽ chào bạn và nhận diện máy của bạn ngay lập tức!
 
-4. NẾU DÙNG TÍNH NĂNG GỬI ZALO TỰ ĐỘNG:
+------------------------------------------------------------------
+4. QUẢN LÝ TIỆN LỢI VỚI "MacFileBot Manager.app":
+   • Bấm đúp vào "MacFileBot Manager.app" để xem trạng thái bot đang chạy,
+     đổi thư mục Google Drive upload, hoặc khởi động lại bot bất cứ lúc nào.
+
+------------------------------------------------------------------
+5. NẾU DÙNG TÍNH NĂNG GỬI ZALO TỰ ĐỘNG:
    • Vào Cài đặt hệ thống ➔ Quyền riêng tư & Bảo mật ➔ Trợ năng (Accessibility)
      ➔ Gạt bật cho Python.
    • Đảm bảo ứng dụng Zalo trên máy Mac đang mở và đã đăng nhập.

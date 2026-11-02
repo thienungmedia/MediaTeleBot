@@ -9,8 +9,34 @@ an toàn (không xoá, không ghi đè). Nếu chưa có API key thì module nà
 import datetime
 import json
 import os
+import ssl
 import urllib.request
 from pathlib import Path
+
+def _get_ssl_context():
+    try:
+        ctx = ssl.create_default_context()
+        if os.path.exists("/etc/ssl/cert.pem"):
+            ctx.load_verify_locations("/etc/ssl/cert.pem")
+        return ctx
+    except Exception:
+        pass
+    try:
+        return ssl._create_unverified_context()
+    except Exception:
+        return None
+
+def _urlopen_robust(req, timeout=15):
+    ctx = _get_ssl_context()
+    try:
+        if ctx:
+            return urllib.request.urlopen(req, context=ctx, timeout=timeout)
+        return urllib.request.urlopen(req, timeout=timeout)
+    except Exception as e:
+        if "CERTIFICATE_VERIFY_FAILED" in str(e) or "certificate verify failed" in str(e):
+            unverified = ssl._create_unverified_context()
+            return urllib.request.urlopen(req, context=unverified, timeout=timeout)
+        raise
 
 CONFIG_PATH = Path(__file__).parent.resolve() / "config.json"
 DEFAULT_MODEL = "gemini-3.1-flash-lite"
@@ -86,7 +112,7 @@ def rewrite_to_command(user_text: str) -> str | None:
             headers={"Content-Type": "application/json", "x-goog-api-key": key},
         )
         try:
-            with urllib.request.urlopen(req, timeout=15) as resp:
+            with _urlopen_robust(req, timeout=15) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
             text = data["candidates"][0]["content"]["parts"][0]["text"].strip()
             break

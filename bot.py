@@ -55,6 +55,34 @@ def save_config(cfg: dict) -> None:
     CONFIG_PATH.write_text(json.dumps(current, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
+import ssl
+
+def _get_ssl_context():
+    try:
+        ctx = ssl.create_default_context()
+        if os.path.exists("/etc/ssl/cert.pem"):
+            ctx.load_verify_locations("/etc/ssl/cert.pem")
+        return ctx
+    except Exception:
+        pass
+    try:
+        return ssl._create_unverified_context()
+    except Exception:
+        return None
+
+def _urlopen_robust(req, timeout=35):
+    ctx = _get_ssl_context()
+    try:
+        if ctx:
+            return urllib.request.urlopen(req, context=ctx, timeout=timeout)
+        return urllib.request.urlopen(req, timeout=timeout)
+    except Exception as e:
+        if "CERTIFICATE_VERIFY_FAILED" in str(e) or "certificate verify failed" in str(e):
+            unverified = ssl._create_unverified_context()
+            return urllib.request.urlopen(req, context=unverified, timeout=timeout)
+        raise
+
+
 class TelegramClient:
     def __init__(self, token: str):
         self.token = token.strip()
@@ -68,7 +96,7 @@ class TelegramClient:
             data = json.dumps(payload).encode("utf-8")
             headers["Content-Type"] = "application/json"
         req = urllib.request.Request(url, data=data, headers=headers)
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with _urlopen_robust(req, timeout=timeout) as resp:
             return json.loads(resp.read().decode("utf-8"))
 
     def send_message(self, chat_id: int, text: str, reply_markup: dict | None = None) -> dict:
