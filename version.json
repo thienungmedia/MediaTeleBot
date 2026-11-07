@@ -1,9 +1,10 @@
 {
-  "version": "1.4.2",
-  "release_notes": "• Liên kết ngữ cảnh thông minh khi gửi link Google Drive qua Zalo:\n  - Sau khi tìm file/thư mục hoặc lấy link, bạn chỉ cần nhắn ngắn gọn: 'gửi qua cho Hoàng', 'gửi link đấy qua cho Hoàng Dựng', 'gửi file đó cho Hoàng'... bot sẽ tự động hiểu và lấy đúng link Google Drive vừa tìm được ở tin nhắn trước để gửi.\n  - Khi yêu cầu gửi file/thư mục cho ai đó, bot mặc định 100% là gửi link Google Drive qua Zalo (không chuyển file nội bộ).\n• Tích hợp sẵn trí tuệ nhân tạo Gemini AI hiểu mọi ngữ cảnh nói tự nhiên & trò chuyện đa chủ đề.",
+  "version": "1.5.0",
+  "release_notes": "• Tính năng mới: Tự động 'Xoá bản tải về' Google Drive sau khi đồng bộ thành công 100% để tiết kiệm dung lượng ổ cứng máy Mac:\n  - Cơ chế chuẩn macOS File Provider (giống hệt nút 'Xoá bản tải về' khi click chuột phải trong Finder):\n    + Chỉ xoá bản sao lưu tạm trên máy Mac để trả lại dung lượng ổ cứng trống.\n    + File vẫn còn nguyên vẹn 100% trên Google Drive đám mây và vẫn hiện trong Finder (biểu tượng đám mây), bấm mở là tự tải lại.\n    + File gốc trên ổ cứng (FILM DATA, SOURCE...) không bao giờ bị đụng tới.\n  - Kiểm tra an toàn tuyệt đối 2 lớp: Chỉ xoá khi TOÀN BỘ file đã đồng bộ đủ 100% (NSURLUbiquitousItemIsUploaded = 1, có Cloud ID thật, không lỗi, không xung đột, số file và tổng dung lượng khớp tuyệt đối với bản gốc, trạng thái ổn định).\n  - Lệnh tự nhiên: 'xoá bản tải về <tên>', 'kiểm tra đồng bộ <tên>', 'bật/tắt tự động xoá bản tải về'.\n• Giữ nguyên 100% chốt an toàn cấm xoá file thật.",
   "files": {
     "bot.py": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/bot.py",
     "safe_fs.py": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/safe_fs.py",
+    "gdrive_offload.py": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/gdrive_offload.py",
     "nl_engine.py": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/nl_engine.py",
     "llm_intent.py": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/llm_intent.py",
     "lunar_calendar.py": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/lunar_calendar.py",

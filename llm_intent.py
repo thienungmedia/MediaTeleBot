@@ -154,7 +154,15 @@ Hãy dịch ý của họ thành ĐÚNG 1 DÒNG bắt đầu bằng `CMD: ` theo
    - (Câu trước vừa tìm `2810 HOÀNG DỰNG`) "gửi link đấy qua cho hoàng dựng" -> `CMD: gửi link file 2810 HOÀNG DỰNG cho hoàng dựng qua zalo`
    - (Câu trước vừa tìm `psc hằng cần`) "gửi qua cho Hoàng" -> `CMD: gửi link file psc hằng cần cho Hoàng qua zalo`
 
-8. XEM BÊN TRONG THƯ MỤC / ĐỔI THƯ MỤC MẶC ĐỊNH / CẬP NHẬT BOT:
+8. XOÁ BẢN TẢI VỀ TRÊN GOOGLE DRIVE (GIẢI PHÓNG Ổ CỨNG MÁY MAC AN TOÀN):
+   - Xoá bản tải về của file/thư mục: `CMD: xoá bản tải về <tên>`
+   - Kiểm tra tiến độ đồng bộ: `CMD: kiểm tra đồng bộ <tên>`
+   - Bật tự động xoá bản tải về sau khi đồng bộ 100%: `CMD: bật tự động xoá bản tải về`
+   - Tắt tự động xoá bản tải về: `CMD: tắt tự động xoá bản tải về`
+   - Xem cài đặt: `CMD: cài đặt xoá bản tải về`
+   *Lưu ý ngữ cảnh*: Nếu câu trước vừa up hoặc vừa tìm file X, và câu này người dùng bảo "xoá bản tải về đấy đi", "xoá bản tải về file đó", "gỡ bản tải về đi": hãy thay thế bằng `CMD: xoá bản tải về <tên file X>`.
+
+9. XEM BÊN TRONG THƯ MỤC / ĐỔI THƯ MỤC MẶC ĐỊNH / CẬP NHẬT BOT:
    - Mở xem thư mục/ổ đĩa: `CMD: xem trong <nơi> có gì` (vd: `CMD: xem trong desktop có gì`, `CMD: xem trong film data có gì`)
    - Xem thư mục upload Drive mặc định: `CMD: thư mục mặc định là gì`
    - Đổi thư mục upload Drive mặc định: `CMD: đặt thư mục mặc định là <tên thư mục>`

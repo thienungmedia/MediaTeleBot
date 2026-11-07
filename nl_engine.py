@@ -745,6 +745,201 @@ PENDING_CONFIRM: dict[int, dict] = {}
 LAST_CONTEXT: dict[int, dict] = {}
 
 
+def _try_gdrive_offload_dispatch(t: str, chat_id: int) -> dict | None:
+    """
+    Xử lý tính năng 'Xoá bản tải về' Google Drive:
+    - Bật / tắt tự động xoá bản tải về sau khi đồng bộ 100%.
+    - Kiểm tra tiến độ đồng bộ của file/thư mục.
+    - Xoá bản tải về của file/thư mục (chỉ gỡ bản lưu tạm trên máy Mac khi đã 100% đồng bộ).
+    - Chặn và hướng dẫn khi người dùng yêu cầu xoá file thật.
+    """
+    t_clean = t.strip()
+    t_lower = t_clean.lower()
+    t_norm = strip_accents(t_clean).lower()
+
+    # 1. Bật / Tắt / Cài đặt tự động xoá bản tải về
+    if re.search(r"^(?:bật|kích\s*hoạt)\s+(?:tính\s*năng\s+)?(?:tự\s*động\s+)?(?:xoá|xóa|gỡ)\s+bản\s+tải\s+về", t_lower) or t_norm in (
+        "bat tu dong xoa ban tai ve", "bat xoa ban tai ve", "bat go ban tai ve", "bat tu dong go ban tai ve"
+    ):
+        import gdrive_offload
+        gdrive_offload.set_auto_offload(True)
+        return {
+            "handled": True,
+            "reply": (
+                "✅ ĐÃ BẬT TỰ ĐỘNG 'XOÁ BẢN TẢI VỀ' (Tiết kiệm dung lượng)!\n\n"
+                "💡 Cách hoạt động an toàn:\n"
+                "• Từ bây giờ, mỗi khi tải file/thư mục lên Google Drive, sau khi Google Drive đồng bộ thành công 100% lên đám mây, bot sẽ tự động xoá bản tải về trên máy Mac để giải phóng ổ cứng.\n"
+                "• File vẫn còn nguyên vẹn 100% trên đám mây Google Drive và vẫn hiện trong Finder (biểu tượng đám mây), bấm mở là tự tải lại.\n"
+                "• File gốc trên ổ cứng (FILM DATA, SOURCE...) không bao giờ bị đụng tới."
+            ),
+        }
+
+    if re.search(r"^(?:tắt|huỷ|ngừng|dừng)\s+(?:tính\s*năng\s+)?(?:tự\s*động\s+)?(?:xoá|xóa|gỡ)\s+bản\s+tải\s+về", t_lower) or t_norm in (
+        "tat tu dong xoa ban tai ve", "tat xoa ban tai ve", "tat go ban tai ve", "tat tu dong go ban tai ve"
+    ):
+        import gdrive_offload
+        gdrive_offload.set_auto_offload(False)
+        return {
+            "handled": True,
+            "reply": (
+                "⏸ ĐÃ TẮT TỰ ĐỘNG 'XOÁ BẢN TẢI VỀ'!\n\n"
+                "• Các file/thư mục upload lên Google Drive sẽ được giữ nguyên bản lưu trên máy Mac.\n"
+                "• Khi nào cần giải phóng ổ cứng, bạn chỉ cần nhắn: `xoá bản tải về <tên file/thư mục>`."
+            ),
+        }
+
+    if t_norm in (
+        "cai dat xoa ban tai ve", "trang thai xoa ban tai ve", "xoa ban tai ve la gi", "tu dong xoa ban tai ve la gi"
+    ) or re.search(r"^(?:xem\s+)?(?:cài\s*đặt|trạng\s*thái)\s+(?:xoá|xóa|gỡ)\s+bản\s+tải\s+về", t_lower):
+        import gdrive_offload
+        enabled = gdrive_offload.is_auto_offload_enabled()
+        status_str = "🟢 ĐANG BẬT (Tự động giải phóng dung lượng sau khi đồng bộ 100%)" if enabled else "⚪️ ĐANG TẮT (Giữ bản lưu trên máy Mac)"
+        pending_jobs = gdrive_offload.list_pending_jobs()
+        job_lines = ""
+        if pending_jobs:
+            job_lines = f"\n\n⏳ Đang theo dõi đồng bộ {len(pending_jobs)} mục:\n" + "\n".join(f"• {Path(j['dst']).name}" for j in pending_jobs[:5])
+        return {
+            "handled": True,
+            "reply": (
+                f"⚙️ CÀI ĐẶT 'XOÁ BẢN TẢI VỀ' GOOGLE DRIVE:\n\n"
+                f"• Trạng thái: {status_str}\n"
+                f"{job_lines}\n\n"
+                f"👉 Để thay đổi, bạn có thể nhắn:\n"
+                f"• \"Bật tự động xoá bản tải về\"\n"
+                f"• \"Tắt tự động xoá bản tải về\""
+            ),
+        }
+
+    # 2. Kiểm tra tiến độ đồng bộ Google Drive
+    m_sync = re.search(
+        r"^(?:kiểm\s*tra|check|xem)\s+(?:tiến\s*độ\s+)?đồng\s+bộ(?:\s+(?:của\s+)?(?:file\s+|thư\s*mục\s+|folder\s+|mục\s+)?)?(.*)$",
+        t_clean,
+        flags=re.IGNORECASE,
+    )
+    if m_sync:
+        import gdrive_offload
+        raw_target = (m_sync.group(1) or "").strip()
+        clean_target = clean_polite_phrases(raw_target)
+        if _is_context_pronoun(clean_target) or not clean_target:
+            ctx = LAST_CONTEXT.get(chat_id, {})
+            clean_target = ctx.get("last_gdrive_item", {}).get("name") or ctx.get("last_item") or ""
+
+        if not clean_target:
+            pending_jobs = gdrive_offload.list_pending_jobs()
+            if pending_jobs:
+                lines = [f"☁️ TIẾN ĐỘ ĐỒNG BỘ CÁC MỤC ĐANG THEO DÕI ({len(pending_jobs)} mục):\n"]
+                for j in pending_jobs[:5]:
+                    st = gdrive_offload.check_sync_status(j["dst"], j.get("src"))
+                    pct = (st["uploaded"] * 100 // st["total"]) if st["total"] else 0
+                    lines.append(f"• {st['name']}: {st['uploaded']}/{st['total']} file ({pct}%) — Chiếm ổ cứng: {safe_fs.format_size(st['local_bytes'])}")
+                return {"handled": True, "reply": "\n".join(lines)}
+            return {"handled": True, "reply": "ℹ️ Bạn muốn kiểm tra tiến độ đồng bộ của file hay thư mục nào trên Google Drive?"}
+
+        gd_matches = query_gdrive_items(clean_target)
+        if not gd_matches:
+            return {"handled": True, "reply": f"🔍 Không tìm thấy '{clean_target}' trên Google Drive của bạn để kiểm tra đồng bộ."}
+        target_item = gd_matches[0]
+        if not target_item.get("path"):
+            return {"handled": True, "reply": f"ℹ️ Mục '{target_item['name']}' đang nằm hoàn toàn trên đám mây Google Drive (không tốn dung lượng máy Mac)."}
+        st = gdrive_offload.check_sync_status(target_item["path"])
+        return {"handled": True, "reply": gdrive_offload.format_status_text(st)}
+
+    # 3. Yêu cầu "Xoá bản tải về" / "Gỡ bản tải về"
+    m_evict = re.search(
+        r"^(?:hãy\s+|giúp\s+tôi\s+)?(?:xoá|xóa|gỡ|xoa|go)\s+bản\s+tải\s+về(?:\s+(?:của\s+)?(?:file\s+|thư\s+mục\s+|folder\s+|mục\s+)?)?(.*)$",
+        t_clean,
+        flags=re.IGNORECASE,
+    )
+    if not m_evict:
+        m_evict = re.search(
+            r"^(?:hãy\s+|giúp\s+tôi\s+)?(?:xoá|xóa|gỡ)\s+(?:cache|bộ\s*nhớ\s*tạm)\s+(?:drive|google\s*drive)(?:\s+(?:của\s+)?(?:file\s+|thư\s+mục\s+|folder\s+|mục\s+)?)?(.*)$",
+            t_clean,
+            flags=re.IGNORECASE,
+        )
+    if not m_evict:
+        m_evict = re.search(
+            r"^(?:hãy\s+|giúp\s+tôi\s+)?giải\s+phóng\s+dung\s+lượng\s+(?:drive|google\s*drive)(?:\s+(?:của\s+)?(?:file\s+|thư\s+mục\s+|folder\s+|mục\s+)?)?(.*)$",
+            t_clean,
+            flags=re.IGNORECASE,
+        )
+
+    if m_evict:
+        import gdrive_offload
+        raw_target = (m_evict.group(1) or "").strip()
+        clean_target = clean_polite_phrases(raw_target)
+        if _is_context_pronoun(clean_target) or not clean_target:
+            ctx = LAST_CONTEXT.get(chat_id, {})
+            clean_target = ctx.get("last_gdrive_item", {}).get("name") or ctx.get("last_item") or ""
+
+        if not clean_target:
+            return {
+                "handled": True,
+                "reply": (
+                    "ℹ️ Bạn muốn xoá bản tải về của file hay thư mục nào trên Google Drive?\n"
+                    "👉 Hãy nhắn: `xoá bản tải về <tên file/thư mục>` (ví dụ: `xoá bản tải về 2810`)."
+                ),
+            }
+
+        gd_matches = query_gdrive_items(clean_target)
+        if not gd_matches:
+            return {
+                "handled": True,
+                "reply": f"🔍 Không tìm thấy file/thư mục '{clean_target}' trên Google Drive để xoá bản tải về.",
+            }
+
+        target_item = gd_matches[0]
+        target_path = target_item.get("path")
+        if not target_path or not Path(target_path).exists():
+            return {
+                "handled": True,
+                "reply": (
+                    f"✅ Mục '{target_item['name']}' đã ở trạng thái lưu trên đám mây (không tốn dung lượng máy Mac)."
+                ),
+            }
+
+        st = gdrive_offload.check_sync_status(target_path)
+        if st["ok_100"]:
+            res = gdrive_offload.offload_local_copy(target_path, require_stable=False)
+            return {"handled": True, "reply": gdrive_offload.format_offload_result(res)}
+        else:
+            pct = (st["uploaded"] * 100 // st["total"]) if st["total"] else 0
+            gdrive_offload.schedule_offload_when_synced(target_path, notify=True)
+            return {
+                "handled": True,
+                "reply": (
+                    f"⏳ CHƯA THỂ XOÁ BẢN TẢI VỀ NGAY LÚC NÀY ĐỂ ĐẢM BẢO AN TOÀN:\n\n"
+                    f"• Mục: {st['name']}\n"
+                    f"• Tiến độ: {st['uploaded']}/{st['total']} file đã lên đám mây ({pct}%)\n"
+                    f"• Dung lượng: {safe_fs.format_size(st['logical_bytes'])}\n\n"
+                    f"🛡️ QUY TẮC AN TOÀN TUYỆT ĐỐI:\n"
+                    f"Bot chỉ xoá bản tải về khi 100% file đã đồng bộ thành công lên Google Drive để tránh trường hợp thiếu file!\n\n"
+                    f"✅ Bot đã lên lịch tự động: Ngay khi đồng bộ đủ 100%, bot sẽ tự động xoá bản tải về và thông báo cho bạn."
+                ),
+            }
+
+    # 4. Chặn và giải thích nếu người dùng gõ lệnh xoá file thật ("xoá file X", "xoá thư mục Y")
+    m_delete = re.search(
+        r"^(?:hãy\s+|giúp\s+tôi\s+)?(?:xoá|xóa|delete|remove|clear)\s+(?:file\s+|thư\s*mục\s+|folder\s+|mục\s+|dự\s*án\s+|project\s+)?(.+)$",
+        t_clean,
+        flags=re.IGNORECASE,
+    )
+    if m_delete:
+        arg = m_delete.group(1).strip()
+        # Loại trừ nếu là "xoá bản tải về" đã xử lý ở trên
+        if not any(kw in strip_accents(arg).lower() for kw in ("ban tai ve", "cache", "bo nho tam")):
+            return {
+                "handled": True,
+                "reply": (
+                    f"🔒 CHẾ ĐỘ BẢO VỆ AN TOÀN: Bot được thiết lập CẤM XOÁ FILE 100% để đảm bảo an toàn tuyệt đối cho dữ liệu dự án của bạn!\n\n"
+                    f"💡 Nếu bạn muốn giải phóng dung lượng ổ cứng cho các file/thư mục đã tải lên Google Drive, bạn hãy dùng tính năng an toàn 'Xoá bản tải về':\n"
+                    f"👉 Nhắn: `xoá bản tải về {arg}`\n\n"
+                    f"✅ Tính năng này chỉ gỡ bản lưu tạm trên máy Mac, file vẫn nằm nguyên vẹn 100% trên đám mây Google Drive."
+                ),
+            }
+
+    return None
+
+
 def parse_and_execute_nl(text: str, chat_id: int = 0, _from_llm: bool = False) -> dict:
     """Analyze natural Vietnamese command and return confirmation prompt or execute action."""
     t = text.strip()
@@ -952,6 +1147,11 @@ def parse_and_execute_nl(text: str, chat_id: int = 0, _from_llm: bool = False) -
                 f"\n👉 Lưu ý: Nếu đây là thư mục do chủ dự án chia sẻ cho bạn, hãy đảm bảo bạn đã bấm \"Thêm lối tắt vào Drive\" (Add shortcut to Drive) trên Google Drive web để file tự động chạy về Drive của chủ nhân nhé!"
             )
         return {"handled": True, "reply": "\n".join(lines)}
+
+    # 0.35 Xoá bản tải về Google Drive / Kiểm tra đồng bộ / Cài đặt tự động / Chặn xoá file thật
+    offload_res = _try_gdrive_offload_dispatch(t, chat_id)
+    if offload_res:
+        return offload_res
 
     # 0.4 Xem lịch: "ngày 25.10 tôi có bao nhiêu lịch", "hôm nay có lịch gì", "tuần này có lịch gì"
     q_res = _try_calendar_query(t)

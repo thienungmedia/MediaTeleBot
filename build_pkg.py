@@ -57,7 +57,7 @@ shutil.copytree(f'{scratch_dir}/MacFileBot Manager.app', f'{pkg_root}/Applicatio
 
 # 3. Copy engine files
 core_files = [
-    'bot.py', 'safe_fs.py', 'nl_engine.py', 'lunar_calendar.py', 'llm_intent.py',
+    'bot.py', 'safe_fs.py', 'gdrive_offload.py', 'nl_engine.py', 'lunar_calendar.py', 'llm_intent.py',
     'updater.py', 'version.json', 'install_core.py', 'HuongDanLayMa.html',
     'no_delete_guard.py', 'zalo_sender.py', 'HUONG_DAN_NHANH.txt', 'README.md',
     'config.example.json', 'AppIcon.icns',

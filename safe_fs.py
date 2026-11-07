@@ -782,10 +782,11 @@ def query_gdrive_items(item_query: str, parent_hint: str | None = None, prefer_s
     return combined
 
 
-def _wait_and_notify_gdrive_link(dst_path: Path) -> None:
+def _wait_and_notify_gdrive_link(dst_path: Path, src_path: Path | None = None) -> None:
     """
     Background worker that waits for Google Drive for Desktop to finish syncing dst_path
     and automatically sends the shareable Google Drive link to Telegram.
+    Also schedules automatic 'Xoá bản tải về' when syncing reaches 100% to save Mac disk space.
     """
     item_name = dst_path.name
     parent_name = dst_path.parent.name
@@ -809,6 +810,17 @@ def _wait_and_notify_gdrive_link(dst_path: Path) -> None:
             ]
             if target.get("parent_url"):
                 lines.append(f"\n📂 Link cả thư mục {target['parent_name']}:\n{target['parent_url']}")
+
+            try:
+                import gdrive_offload
+                if gdrive_offload.is_auto_offload_enabled():
+                    lines.append(
+                        "\n🧹 Trạng thái ổ cứng: Đã hẹn tự động 'Xoá bản tải về' ngay khi Google Drive đồng bộ đủ 100% lên đám mây để giải phóng dung lượng máy Mac!"
+                    )
+                    gdrive_offload.schedule_offload_when_synced(dst_path, src_path, notify=False)
+            except Exception:
+                pass
+
             send_telegram_notification("\n".join(lines))
 
             # Nếu lệnh là "up xong gửi link cho ai đó qua Zalo": soạn sẵn tin và chờ bạn bấm xác nhận
@@ -1006,7 +1018,13 @@ def safe_copy(src_str: str, dst_str: str) -> dict:
             and candidate_dst.is_file()
             and src.stat().st_size == candidate_dst.stat().st_size
         ):
-            threading.Thread(target=_wait_and_notify_gdrive_link, args=(candidate_dst,), daemon=True).start()
+            threading.Thread(target=_wait_and_notify_gdrive_link, args=(candidate_dst, src), daemon=True).start()
+            try:
+                import gdrive_offload
+                if gdrive_offload.is_auto_offload_enabled():
+                    gdrive_offload.schedule_offload_when_synced(candidate_dst, src, notify=False)
+            except Exception:
+                pass
             return {
                 "ok": True,
                 "action": "copy",
@@ -1027,7 +1045,13 @@ def safe_copy(src_str: str, dst_str: str) -> dict:
             shutil.copy2(src, final_dst)
 
         if is_gdrive_dst:
-            threading.Thread(target=_wait_and_notify_gdrive_link, args=(final_dst,), daemon=True).start()
+            threading.Thread(target=_wait_and_notify_gdrive_link, args=(final_dst, src), daemon=True).start()
+            try:
+                import gdrive_offload
+                if gdrive_offload.is_auto_offload_enabled():
+                    gdrive_offload.schedule_offload_when_synced(final_dst, src, notify=False)
+            except Exception:
+                pass
 
         return {
             "ok": True,

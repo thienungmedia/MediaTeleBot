@@ -13,6 +13,8 @@ system_info.json
 zalo_pending.json
 zalo_after_upload.json
 local_calendar.json
+offload_jobs.json
+offload_settings.json
 
 # Temporary & backup files
 *.tmp*

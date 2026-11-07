@@ -43,7 +43,7 @@ def _urlopen_robust(req, timeout=20):
 
 BASE_DIR = Path(__file__).parent.resolve()
 CONFIG_PATH = BASE_DIR / "config.json"
-CURRENT_VERSION = "1.4.2"
+CURRENT_VERSION = "1.5.0"
 
 DEFAULT_MANIFEST_URL = "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/version.json"
 

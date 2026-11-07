@@ -339,11 +339,18 @@ def format_dir_view(path_str: str, chat_id: int) -> tuple[str, dict]:
             f"🔒 Chế độ an toàn: Chỉ cho phép Sao chép hoặc Dời file (Không xoá)."
         )
         parent_pid = register_path(str(Path(info["path"]).parent))
+        row1 = [
+            {"text": "📋 Sao chép (Copy) file này", "callback_data": f"pick_cp:{f_pid}"},
+            {"text": "📦 Dời (Move) file này", "callback_data": f"pick_mv:{f_pid}"},
+        ]
+        try:
+            import gdrive_offload
+            if gdrive_offload.is_inside_google_drive(info["path"]):
+                row1.append({"text": "🧹 Xoá bản tải về", "callback_data": f"evict:{f_pid}"})
+        except Exception:
+            pass
         kb = [
-            [
-                {"text": "📋 Sao chép (Copy) file này", "callback_data": f"pick_cp:{f_pid}"},
-                {"text": "📦 Dời (Move) file này", "callback_data": f"pick_mv:{f_pid}"},
-            ],
+            row1,
             [{"text": "⬅️ Quay lại thư mục cha", "callback_data": f"open:{parent_pid}"}],
         ]
         return text, {"inline_keyboard": kb}
@@ -376,10 +383,17 @@ def format_dir_view(path_str: str, chat_id: int) -> tuple[str, dict]:
         kb.append([{"text": act_label, "callback_data": f"paste:{cur_pid}"}])
         kb.append([{"text": "❌ Huỷ thao tác Copy/Move", "callback_data": f"cancel:{cur_pid}"}])
     else:
-        kb.append([
+        folder_row = [
             {"text": "📋 Copy cả thư mục này", "callback_data": f"pick_cp:{cur_pid}"},
             {"text": "📦 Dời cả thư mục này", "callback_data": f"pick_mv:{cur_pid}"},
-        ])
+        ]
+        try:
+            import gdrive_offload
+            if gdrive_offload.is_inside_google_drive(cur_path):
+                folder_row.append({"text": "🧹 Xoá bản tải về", "callback_data": f"evict:{cur_pid}"})
+        except Exception:
+            pass
+        kb.append(folder_row)
 
     # Navigation row
     nav_row = []
@@ -752,6 +766,36 @@ def handle_callback(client: TelegramClient, cfg: dict, cb: dict) -> None:
                     client.send_message(chat_id, f"❌ Lỗi: {res.get('error')}")
                 return
 
+    if data.startswith("evict:"):
+        pid = data.split(":", 1)[1]
+        path_str = get_registered_path(pid)
+        if not path_str or not Path(path_str).exists():
+            client.send_message(chat_id, "⚠️ Phiên đường dẫn đã hết hạn hoặc mục không còn tồn tại.", reply_markup=build_home_keyboard())
+            return
+        import gdrive_offload
+        if not gdrive_offload.is_inside_google_drive(path_str):
+            client.send_message(chat_id, "❌ Mục này không nằm trong Google Drive. Không thể xoá bản tải về.")
+            return
+        st = gdrive_offload.check_sync_status(path_str)
+        if st["ok_100"]:
+            client.send_message(chat_id, f"🧹 Đang thực hiện 'Xoá bản tải về' cho '{st['name']}'...")
+            res = gdrive_offload.offload_local_copy(path_str, require_stable=False)
+            client.send_message(chat_id, gdrive_offload.format_offload_result(res))
+        else:
+            pct = (st["uploaded"] * 100 // st["total"]) if st["total"] else 0
+            gdrive_offload.schedule_offload_when_synced(path_str, notify=True)
+            client.send_message(
+                chat_id,
+                f"⏳ CHƯA THỂ XOÁ BẢN TẢI VỀ NGAY LÚC NÀY ĐỂ BẢO VỆ DỮ LIỆU:\n\n"
+                f"• Mục: {st['name']}\n"
+                f"• Tiến độ: {st['uploaded']}/{st['total']} file đã lên đám mây ({pct}%)\n"
+                f"• Dung lượng: {safe_fs.format_size(st['logical_bytes'])}\n\n"
+                f"🛡️ QUY TẮC AN TOÀN TUYỆT ĐỐI:\n"
+                f"Bot chỉ xoá bản tải về khi 100% file đã đồng bộ thành công lên Google Drive để tránh thiếu file!\n\n"
+                f"✅ Bot đã lên lịch tự động: Ngay khi đồng bộ đủ 100%, bot sẽ tự động xoá bản tải về và thông báo cho bạn."
+            )
+        return
+
     if data.startswith("open:"):
         pid = data.split(":", 1)[1]
         path_str = get_registered_path(pid)
@@ -943,6 +987,13 @@ def main():
     print(f"🚀 Telegram Bot @{bot_username} đang hoạt động! (Chế độ cấm xoá file: BẬT)", flush=True)
 
     threading.Thread(target=write_system_snapshot, daemon=True).start()
+    try:
+        import gdrive_offload
+        resumed = gdrive_offload.resume_pending_jobs()
+        if resumed > 0:
+            print(f"🔄 Đã khôi phục {resumed} tác vụ tự động xoá bản tải về Google Drive.", flush=True)
+    except Exception as e:
+        print(f"⚠️ Lỗi khôi phục tác vụ xoá bản tải về: {e}", flush=True)
     t_outbox = threading.Thread(target=outbox_worker, args=(client, cfg), daemon=True)
     t_outbox.start()
     t_update = threading.Thread(target=update_checker_worker, args=(client, cfg), daemon=True)
