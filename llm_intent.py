@@ -162,7 +162,15 @@ Hãy dịch ý của họ thành ĐÚNG 1 DÒNG bắt đầu bằng `CMD: ` theo
    - Xem cài đặt: `CMD: cài đặt xoá bản tải về`
    *Lưu ý ngữ cảnh*: Nếu câu trước vừa up hoặc vừa tìm file X, và câu này người dùng bảo "xoá bản tải về đấy đi", "xoá bản tải về file đó", "gỡ bản tải về đi": hãy thay thế bằng `CMD: xoá bản tải về <tên file X>`.
 
-9. XEM BÊN TRONG THƯ MỤC / ĐỔI THƯ MỤC MẶC ĐỊNH / CẬP NHẬT BOT:
+9. MỞ ỨNG DỤNG / PHẦN MỀM TRÊN MÁY MAC:
+   - Mở ứng dụng từ xa: `CMD: mở app <tên>` (vd: `CMD: mở app premiere`, `CMD: mở app capcut`, `CMD: mở app zalo`, `CMD: mở app photoshop`, `CMD: mở app davinci resolve`, `CMD: mở app brave`)
+   - Xem danh sách ứng dụng trên máy: `CMD: xem danh sách app`
+
+10. KIỂM TRA THÙNG RÁC (TRASH) TRÊN MÁY MAC:
+   - Xem danh sách / dung lượng thùng rác: `CMD: kiểm tra thùng rác` (hoặc `CMD: thùng rác nặng bao nhiêu`)
+   - Tìm file trong thùng rác: `CMD: tìm <tên> trong thùng rác` (vd: "tìm psc hằng cần trong thùng rác" -> `CMD: tìm psc hằng cần trong thùng rác`, "coi thùng rác có file cưới 2810 không" -> `CMD: tìm cưới 2810 trong thùng rác`)
+
+11. XEM BÊN TRONG THƯ MỤC / ĐỔI THƯ MỤC MẶC ĐỊNH / CẬP NHẬT BOT:
    - Mở xem thư mục/ổ đĩa: `CMD: xem trong <nơi> có gì` (vd: `CMD: xem trong desktop có gì`, `CMD: xem trong film data có gì`)
    - Xem thư mục upload Drive mặc định: `CMD: thư mục mặc định là gì`
    - Đổi thư mục upload Drive mặc định: `CMD: đặt thư mục mặc định là <tên thư mục>`

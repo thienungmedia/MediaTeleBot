@@ -940,6 +940,178 @@ def _try_gdrive_offload_dispatch(t: str, chat_id: int) -> dict | None:
     return None
 
 
+def _try_trash_dispatch(t: str, chat_id: int) -> dict | None:
+    """
+    Xử lý kiểm tra và tìm kiếm file trong Thùng rác (Trash) trên macOS (Chế độ chỉ đọc, an toàn 100%).
+    """
+    t_clean = t.strip()
+    t_lower = t_clean.lower()
+    t_norm = strip_accents(t_clean).lower()
+
+    # 1. Tìm kiếm file/thư mục cụ thể trong thùng rác
+    # "tìm psc hằng cần trong thùng rác", "trong thùng rác có file 2810 không", "tìm trong thùng rác file test"
+    m_find = re.search(
+        r"^(?:tìm|tìm\s+kiếm|kiếm|kiểm\s+tra|check|coi)\s+(?:xem\s+)?(?:file\s+|thư\s*mục\s+|folder\s+|mục\s+)?(.+?)\s+(?:trong|ở|tại)\s+(?:thùng\s+rác|trash)\b",
+        t_clean,
+        flags=re.IGNORECASE,
+    )
+    if not m_find:
+        m_find = re.search(
+            r"^(?:trong|ở|tại)\s+(?:thùng\s+rác|trash)\s+(?:có\s+)?(?:file\s+|thư\s*mục\s+|folder\s+|mục\s+)?(.+?)(?:\s+không|\s+khong|\s+chưa|\?)*$",
+            t_clean,
+            flags=re.IGNORECASE,
+        )
+    if not m_find:
+        m_find = re.search(
+            r"^(?:tìm|tìm\s+kiếm|kiếm)\s+(?:trong\s+|ở\s+)?(?:thùng\s+rác|trash)\s+(?:file\s+|thư\s*mục\s+|folder\s+|mục\s+)?(.+)$",
+            t_clean,
+            flags=re.IGNORECASE,
+        )
+
+    if m_find:
+        raw_target = m_find.group(1).strip()
+        clean_target = clean_polite_phrases(raw_target)
+        if _is_context_pronoun(clean_target) and LAST_CONTEXT.get(chat_id, {}).get("last_item"):
+            clean_target = LAST_CONTEXT[chat_id]["last_item"]
+
+        if not clean_target:
+            return {"handled": True, "reply": "ℹ️ Bạn muốn tìm file hoặc thư mục nào trong Thùng rác?"}
+
+        res = safe_fs.get_trash_items(clean_target, limit=10)
+        if not res.get("ok"):
+            return {"handled": True, "reply": res.get("error", "Lỗi đọc Thùng rác.")}
+
+        items = res.get("items", [])
+        if not items:
+            return {
+                "handled": True,
+                "reply": f"🔍 Không tìm thấy file/thư mục nào khớp với '{clean_target}' trong Thùng rác (Trash).",
+            }
+
+        lines = [f"🗑 TÌM THẤY {len(items)} MỤC TRONG THÙNG RÁC cho '{clean_target}':\n"]
+        for idx, it in enumerate(items, 1):
+            mod_s = f" — Ngày bỏ: {it['modified']}" if it.get("modified") else ""
+            lines.append(f"{idx}. {it['icon']} {it['name']} ({it['size_human']}){mod_s}\n   📍 `{it['path']}`")
+        return {"handled": True, "reply": "\n".join(lines)}
+
+    # 2. Xem thùng rác / Kiểm tra thùng rác / Dung lượng thùng rác
+    is_trash_query = (
+        t_norm in (
+            "thung rac", "kiem tra thung rac", "xem thung rac", "mo thung rac",
+            "thung rac co gi", "trong thung rac co gi", "xem trong thung rac",
+            "trash", "check trash", "xem trash",
+        )
+        or bool(re.search(r"^(?:kiểm\s*tra|xem|mở)\s+(?:trong\s+|ở\s+)?(?:thùng\s+rác|trash)(?:\s+(?:có\s+gì|có\s+những\s+gì|\?))*$", t_clean, flags=re.IGNORECASE))
+        or bool(re.search(r"^(?:trong\s+)?(?:thùng\s+rác|trash)\s+(?:có\s+gì|có\s+những\s+gì|nặng\s+bao\s+nhiêu|chiếm\s+bao\s+nhiêu|dung\s+lượng)\b", t_clean, flags=re.IGNORECASE))
+        or bool(re.search(r"^(?:dung\s+lượng|tổng\s+dung\s+lượng)\s+(?:của\s+)?(?:thùng\s+rác|trash)", t_clean, flags=re.IGNORECASE))
+        or bool(re.search(r"(?:thùng\s+rác|trash).*?(?:nặng\s+bao\s+nhiêu|bao\s+nhiêu\s*(?:gb|mb)|dung\s*lượng)", t_clean, flags=re.IGNORECASE))
+    )
+
+    if is_trash_query:
+        summary = safe_fs.get_trash_summary()
+        return {"handled": True, "reply": summary.get("reply", "")}
+
+    return None
+
+
+def _try_app_dispatch(t: str, chat_id: int) -> dict | None:
+    """
+    Xử lý yêu cầu mở ứng dụng (Applications) từ xa trên máy Mac hoặc xem danh sách app.
+    """
+    t_clean = t.strip()
+    t_lower = t_clean.lower()
+    t_norm = strip_accents(t_clean).lower()
+
+    # 1. Xem danh sách ứng dụng trên máy Mac
+    if t_norm in (
+        "danh sach app", "danh sach ung dung", "danh sach phan mem",
+        "cac app tren may", "may co nhung app nao", "xem app", "xem cac app",
+        "cac phan mem tren may", "apps", "list app"
+    ) or re.search(r"^(?:xem\s+|kiểm\s+tra\s+)?danh\s+sách\s+(?:các\s+)?(?:app|ứng\s+dụng|phần\s+mềm)\b", t_clean, flags=re.IGNORECASE):
+        categories = safe_fs.list_popular_apps()
+        if not categories:
+            return {"handled": True, "reply": "📱 Không tìm thấy danh sách ứng dụng."}
+
+        lines = ["🚀 CÁC ỨNG DỤNG PHỔ BIẾN TRÊN MÁY MAC CỦA BẠN:\n"]
+        for cat in categories:
+            lines.append(f"*{cat['category']}*:")
+            for name, path in cat["apps"]:
+                lines.append(f"  • {name}")
+            lines.append("")
+        lines.append("👉 Để mở ứng dụng từ xa, bạn chỉ cần nhắn: `mở <tên app>` (ví dụ: `mở premiere`, `bật capcut`, `mở zalo`)!")
+        return {"handled": True, "reply": "\n".join(lines)}
+
+    # 2. Mở ứng dụng cụ thể
+    # Ví dụ: "mở app premiere", "bật app capcut", "mở premiere", "bật zalo", "chạy photoshop", "mở file rust desk.app"
+    m_app = re.search(
+        r"^(?:hãy\s+|giúp\s+tôi\s+|cho\s+tôi\s+)?(?:mở|bật|chạy|khởi\s*động|open|launch)\s+(?:app|ứng\s*dụng|phần\s*mềm)\s+(.+)$",
+        t_clean,
+        flags=re.IGNORECASE,
+    )
+    explicit_app = bool(m_app)
+
+    if not m_app:
+        m_app = re.search(
+            r"^(?:hãy\s+|giúp\s+tôi\s+|cho\s+tôi\s+)?(?:mở|bật|chạy|khởi\s*động|open|launch)\s+(?:file|tệp|tệp\s*tin)?\s*(.+)$",
+            t_clean,
+            flags=re.IGNORECASE,
+        )
+
+    if m_app:
+        raw_candidate = clean_polite_phrases(m_app.group(1).strip())
+        # Làm sạch vị trí phụ trợ như "trong application", "trên máy mac"
+        cleaned = re.sub(
+            r"\s+(?:trong|trên|ở)\s+(?:applications?|ứng\s*dụng|mục\s+ứng\s*dụng|máy|máy\s*mac)$",
+            "",
+            raw_candidate,
+            flags=re.IGNORECASE,
+        ).strip()
+        if cleaned.lower().endswith(".app"):
+            cleaned = cleaned[:-4].strip()
+
+        candidate = cleaned or raw_candidate
+        c_norm = strip_accents(candidate).lower()
+
+        # Bỏ qua nếu đây là thao tác với thư mục, ổ đĩa hoặc tập tin thông thường:
+        # Ví dụ: "mở desktop", "mở downloads", "mở documents", "mở film data", "mở ổ cứng", "mở thùng rác", "mở thư mục..."
+        if not explicit_app and not candidate.lower().endswith(".app"):
+            if c_norm in (
+                "desktop", "man hinh", "downloads", "tai ve", "documents", "tai lieu",
+                "film data", "source", "o dia", "o cung", "thung rac", "trash", "home", "thu muc goc",
+                "google drive", "drive", "gg drive"
+            ) or c_norm.startswith(("thu muc ", "folder ", "file ", "o dia ", "o cung ")):
+                # Kiểm tra nếu tên này không khớp với app nào
+                _an, _ap = safe_fs.match_app(candidate)
+                if not _an:
+                    return None
+            else:
+                # Kiểm tra nếu candidate thực sự là một thư mục trên máy (và không phải app)
+                dest_dir = resolve_destination(candidate)
+                if dest_dir and dest_dir.exists():
+                    _an, _ap = safe_fs.match_app(candidate)
+                    if not _an:
+                        return None
+
+        # Kiểm tra xem có khớp với ứng dụng nào trên macOS không
+        app_name, app_path = safe_fs.match_app(candidate)
+        if app_name and app_path:
+            res = safe_fs.open_application(candidate)
+            return {
+                "handled": True,
+                "reply": res.get("reply") or res.get("error", "Không thể mở ứng dụng."),
+            }
+
+        # Nếu người dùng có nói rõ chữ "app" hay "phần mềm" nhưng không tìm thấy:
+        if explicit_app:
+            res = safe_fs.open_application(candidate)
+            return {
+                "handled": True,
+                "reply": res.get("error", f"🔍 Không tìm thấy ứng dụng nào khớp với '{candidate}'."),
+            }
+
+    return None
+
+
 def parse_and_execute_nl(text: str, chat_id: int = 0, _from_llm: bool = False) -> dict:
     """Analyze natural Vietnamese command and return confirmation prompt or execute action."""
     t = text.strip()
@@ -1152,6 +1324,16 @@ def parse_and_execute_nl(text: str, chat_id: int = 0, _from_llm: bool = False) -
     offload_res = _try_gdrive_offload_dispatch(t, chat_id)
     if offload_res:
         return offload_res
+
+    # 0.36 Kiểm tra Thùng rác (Trash)
+    trash_res = _try_trash_dispatch(t, chat_id)
+    if trash_res:
+        return trash_res
+
+    # 0.37 Mở Ứng Dụng (Apps) / Danh sách phần mềm
+    app_res = _try_app_dispatch(t, chat_id)
+    if app_res:
+        return app_res
 
     # 0.4 Xem lịch: "ngày 25.10 tôi có bao nhiêu lịch", "hôm nay có lịch gì", "tuần này có lịch gì"
     q_res = _try_calendar_query(t)
@@ -2105,9 +2287,22 @@ def _smart_search_reply(raw_query: str, chat_id: int = 0) -> dict:
         return {"handled": True, "reply": "\n".join(lines), "matches": matches}
 
     results, q_tokens = smart_search(clean_q)
+    trash_res = safe_fs.get_trash_items(clean_q, limit=3)
+    trash_items = trash_res.get("items", []) if trash_res.get("ok") else []
 
-    if not results and not gd_matches:
+    if not results and not gd_matches and not trash_items:
         return {"handled": True, "reply": f"🔍 Không tìm thấy mục nào liên quan tới '{shown_q}' trên máy, ổ cứng hay Google Drive."}
+
+    if not results and not gd_matches and trash_items:
+        lines = [
+            f"🔍 Không tìm thấy '{shown_q}' trên các ổ đĩa hay Google Drive.",
+            f"\n⚠️ Nhưng phát hiện có {len(trash_items)} mục khớp trong THÙNG RÁC (TRASH) trên máy Mac:"
+        ]
+        for ti in trash_items:
+            mod_str = f" (Ngày bỏ: {ti['modified']})" if ti.get("modified") else ""
+            lines.append(f"• {ti['icon']} {ti['name']} ({ti['size_human']}){mod_str}\n  📍 `{ti['path']}`")
+        lines.append("\n💡 Bạn có thể vào Finder ➔ Thùng rác để khôi phục (Put Back) lại nếu cần nhé!")
+        return {"handled": True, "reply": "\n".join(lines)}
 
     if chat_id:
         if gd_matches:
@@ -2151,6 +2346,12 @@ def _smart_search_reply(raw_query: str, chat_id: int = 0) -> dict:
                 n += 1
                 matches.append(r)
                 lines.append(f"{n}. {'📁' if r['is_dir'] else '📄'} {r['name']}\n    📍 {short(str(Path(r['path']).parent))}")
+
+    if trash_items:
+        lines.append("\n🗑 TRONG THÙNG RÁC (TRASH) — Có thể bạn đã vô tình bỏ vào đây:")
+        for ti in trash_items:
+            mod_str = f" — Ngày bỏ: {ti['modified']}" if ti.get("modified") else ""
+            lines.append(f"• {ti['icon']} {ti['name']} ({ti['size_human']}){mod_str}")
 
     return {"handled": True, "reply": "\n".join(lines), "matches": matches}
 

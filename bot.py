@@ -303,6 +303,10 @@ def build_home_keyboard() -> dict:
             {"text": "📄 Documents", "callback_data": f"open:{register_path(str(home / 'Documents'))}"},
             {"text": "🏠 Thư mục gốc (~)", "callback_data": f"open:{register_path(str(home))}"},
         ],
+        [
+            {"text": "🗑 Thùng rác (Trash)", "callback_data": "trash_view"},
+            {"text": "🚀 Mở Ứng dụng (Apps)", "callback_data": "apps_view"},
+        ],
     ]
     return {"inline_keyboard": buttons}
 
@@ -729,6 +733,36 @@ def handle_callback(client: TelegramClient, cfg: dict, cb: dict) -> None:
                 "2. Đảm bảo ứng dụng Google Drive đang chạy trên thanh menu góc trên màn hình.",
                 reply_markup=build_home_keyboard(),
             )
+        return
+
+    if data == "trash_view":
+        summary = safe_fs.get_trash_summary()
+        kb = [[{"text": "🏠 Về Menu chính", "callback_data": "home"}]]
+        client.send_message(chat_id, summary.get("reply", ""), reply_markup={"inline_keyboard": kb})
+        return
+
+    if data == "apps_view":
+        categories = safe_fs.list_popular_apps()
+        lines = ["🚀 MỞ ỨNG DỤNG TỪ XA TRÊN MÁY MAC:\nBấm nút bên dưới để khởi chạy nhanh ứng dụng:\n"]
+        kb = []
+        for cat in categories:
+            row = []
+            for name, path in cat["apps"][:4]:
+                short_name = name.replace("Adobe ", "").replace(" 2027", "").replace(" 2026", "").replace(" Browser", "")
+                row.append({"text": f"🚀 {short_name}", "callback_data": f"launch_app:{name}"})
+                if len(row) == 2:
+                    kb.append(row)
+                    row = []
+            if row:
+                kb.append(row)
+        kb.append([{"text": "🏠 Về Menu chính", "callback_data": "home"}])
+        client.send_message(chat_id, "\n".join(lines), reply_markup={"inline_keyboard": kb})
+        return
+
+    if data.startswith("launch_app:"):
+        app_name = data.split(":", 1)[1]
+        res = safe_fs.open_application(app_name)
+        client.send_message(chat_id, res.get("reply") or res.get("error", "Không thể mở ứng dụng."))
         return
 
     if data.startswith("qcp:") or data.startswith("qmv:") or data.startswith("qgd:"):

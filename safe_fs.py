@@ -1239,3 +1239,337 @@ def upload_to_google_drive(src_str: str, subfolder: str = "") -> dict:
     dst_dir = resolve_subfolder_fuzzy(gdrive_root, effective_subfolder)
     dst_dir.mkdir(parents=True, exist_ok=True)
     return safe_copy(src_str, str(dst_dir))
+
+
+# ==============================================================================
+# QUẢN LÝ ỨNG DỤNG (APPLICATIONS) & KIỂM TRA THÙNG RÁC (TRASH) TRÊN MACOS
+# ==============================================================================
+
+APP_DIRS = [
+    "/Applications",
+    "/System/Applications",
+    "/System/Applications/Utilities",
+    str(Path.home() / "Applications"),
+]
+
+RAW_APP_ALIASES = {
+    "premiere": ["Adobe Premiere Pro", "Premiere"],
+    "pr": ["Adobe Premiere Pro"],
+    "photoshop": ["Adobe Photoshop", "Photoshop"],
+    "pts": ["Adobe Photoshop"],
+    "ps": ["Adobe Photoshop"],
+    "after effects": ["Adobe After Effects", "After Effects"],
+    "after effect": ["Adobe After Effects"],
+    "ae": ["Adobe After Effects"],
+    "audition": ["Adobe Audition"],
+    "au": ["Adobe Audition"],
+    "illustrator": ["Adobe Illustrator"],
+    "ai": ["Adobe Illustrator"],
+    "media encoder": ["Adobe Media Encoder"],
+    "me": ["Adobe Media Encoder"],
+    "lightroom": ["Adobe Lightroom", "Lightroom"],
+    "lr": ["Adobe Lightroom"],
+    "capcut": ["CapCut"],
+    "davinci": ["DaVinci Resolve"],
+    "davinci resolve": ["DaVinci Resolve"],
+    "resolve": ["DaVinci Resolve"],
+    "final cut": ["Final Cut Pro"],
+    "final cut pro": ["Final Cut Pro"],
+    "fcp": ["Final Cut Pro"],
+    "fcpx": ["Final Cut Pro"],
+    "capture one": ["Capture One"],
+    "zalo": ["Zalo"],
+    "telegram": ["Telegram"],
+    "tele": ["Telegram"],
+    "chrome": ["Google Chrome"],
+    "google chrome": ["Google Chrome"],
+    "coccoc": ["CocCoc", "Cốc Cốc"],
+    "cốc cốc": ["CocCoc", "Cốc Cốc"],
+    "brave": ["Brave Browser", "Brave"],
+    "safari": ["Safari"],
+    "finder": ["Finder"],
+    "lịch": ["Calendar"],
+    "calendar": ["Calendar"],
+    "ghi chú": ["Notes"],
+    "notes": ["Notes"],
+    "nhắc nhở": ["Reminders"],
+    "reminders": ["Reminders"],
+    "tin nhắn": ["Messages"],
+    "messages": ["Messages"],
+    "mail": ["Mail"],
+    "máy tính": ["Calculator"],
+    "calculator": ["Calculator"],
+    "drive": ["Google Drive"],
+    "google drive": ["Google Drive"],
+    "antigravity": ["Antigravity"],
+    "chatgpt": ["ChatGPT"],
+    "claude": ["Claude"],
+    "rustdesk": ["RustDesk"],
+    "rust desk": ["RustDesk"],
+    "ultraviewer": ["UltraViewer"],
+    "ultra viewer": ["UltraViewer"],
+    "teamviewer": ["TeamViewer"],
+    "team viewer": ["TeamViewer"],
+    "anydesk": ["AnyDesk"],
+    "any desk": ["AnyDesk"],
+}
+
+APP_ALIASES = {strip_accents(k).lower(): v for k, v in RAW_APP_ALIASES.items()}
+
+
+def find_installed_apps() -> dict[str, str]:
+    """Quét các thư mục ứng dụng chuẩn trên macOS để lấy danh sách App Name -> App Path."""
+    apps = {}
+    for d in APP_DIRS:
+        p = Path(d)
+        if not p.exists():
+            continue
+        try:
+            for it in p.iterdir():
+                if it.name.endswith(".app") and not it.name.startswith("."):
+                    apps[it.name[:-4]] = str(it)
+                elif it.is_dir() and not it.name.startswith("."):
+                    try:
+                        for sub in it.iterdir():
+                            if sub.name.endswith(".app") and not sub.name.startswith("."):
+                                apps[sub.name[:-4]] = str(sub)
+                    except OSError:
+                        pass
+        except OSError:
+            pass
+    return apps
+
+
+def match_app(query: str) -> tuple[str | None, str | None]:
+    """Tìm ứng dụng phù hợp nhất trên macOS theo tên hoặc từ khoá viết tắt."""
+    q_clean = query.strip()
+    q_norm = strip_accents(q_clean).lower()
+
+    # Xử lý phần đuôi mở rộng .app / .exe nếu người dùng gõ
+    if q_norm.endswith(".app") or q_norm.endswith(".exe"):
+        q_norm = re.sub(r"\.(?:app|exe)$", "", q_norm).strip()
+
+    # Bỏ các tiền tố / hậu tố thông dụng
+    for prefix in ("app ", "ung dung ", "phan mem ", "file ", "tep "):
+        if q_norm.startswith(prefix):
+            q_norm = q_norm[len(prefix):].strip()
+    for suffix in (" app", " ung dung", " phan mem"):
+        if q_norm.endswith(suffix):
+            q_norm = q_norm[:-len(suffix)].strip()
+
+    # Bỏ các cụm từ vị trí: "trong application", "tren mac", v.v.
+    q_norm = re.sub(r"\s+(?:trong|tren|o)\s+(?:applications?|ung\s*dung|may|may\s*mac)$", "", q_norm).strip()
+
+    if not q_norm:
+        return None, None
+
+    installed = find_installed_apps()
+    q_compact = re.sub(r"[^a-z0-9]", "", q_norm)
+
+    def _score(item):
+        n_low = item[0].lower()
+        penalize = any(bad in n_low for bad in ("render engine", "helper", "uninstall", "crash", "eventviewer"))
+        is_prefix = strip_accents(item[0]).lower().startswith(q_norm)
+        return (penalize, not is_prefix, len(item[0]))
+
+    # 1. Alias match
+    aliases = APP_ALIASES.get(q_norm, [])
+    if not aliases and q_compact:
+        aliases = APP_ALIASES.get(q_compact, [])
+    for a in aliases:
+        a_norm = strip_accents(a).lower()
+        matched = []
+        for name, path in installed.items():
+            if a_norm in strip_accents(name).lower():
+                matched.append((name, path))
+        if matched:
+            matched.sort(key=_score)
+            return matched[0]
+
+    # 2. Exact match
+    for name, path in installed.items():
+        if q_norm == strip_accents(name).lower():
+            return name, path
+
+    # 3. Substring match
+    candidates = []
+    for name, path in installed.items():
+        n_norm = strip_accents(name).lower()
+        if q_norm in n_norm:
+            candidates.append((name, path))
+
+    if candidates:
+        candidates.sort(key=_score)
+        return candidates[0]
+
+    # 4. Compact match (bỏ khoảng trắng và dấu gạch nối)
+    if len(q_compact) >= 3:
+        compact_candidates = []
+        for name, path in installed.items():
+            name_compact = re.sub(r"[^a-z0-9]", "", strip_accents(name).lower())
+            if q_compact == name_compact or (len(q_compact) >= 4 and q_compact in name_compact):
+                compact_candidates.append((name, path))
+        if compact_candidates:
+            compact_candidates.sort(key=_score)
+            return compact_candidates[0]
+
+    return None, None
+
+
+def open_application(app_query: str) -> dict:
+    """Mở ứng dụng macOS bằng tên hoặc từ khoá (vd: 'premiere', 'capcut', 'zalo')."""
+    app_name, app_path = match_app(app_query)
+    if not app_name or not app_path:
+        installed = find_installed_apps()
+        sample = [name for name in installed if any(k in name.lower() for k in ("premiere", "photoshop", "capcut", "after effects", "zalo", "telegram"))][:5]
+        sugg = "\n".join(f"• {s}" for s in sample) if sample else ""
+        return {
+            "ok": False,
+            "error": f"🔍 Không tìm thấy ứng dụng nào khớp với '{app_query}' trên máy Mac." + (f"\n\n💡 Một số ứng dụng có sẵn trên máy:\n{sugg}" if sugg else ""),
+        }
+
+    try:
+        res = subprocess.run(["open", app_path], capture_output=True, text=True, timeout=10)
+        if res.returncode == 0:
+            return {
+                "ok": True,
+                "app_name": app_name,
+                "path": app_path,
+                "reply": f"🚀 ĐÃ MỞ ỨNG DỤNG THÀNH CÔNG:\n• Ứng dụng: *{app_name}*\n• Vị trí: `{app_path}`",
+            }
+        else:
+            return {
+                "ok": False,
+                "error": f"❌ Lỗi khi mở ứng dụng '{app_name}': {res.stderr.strip()}",
+            }
+    except Exception as e:
+        return {"ok": False, "error": f"❌ Lỗi khi mở ứng dụng '{app_name}': {e}"}
+
+
+def list_popular_apps() -> list[dict]:
+    """Trả về danh sách các ứng dụng thông dụng chia theo nhóm ngành Media, Trình duyệt, Chat, Hệ thống."""
+    categories = [
+        ("🎬 Quay dựng & Đồ hoạ", ["premiere", "photoshop", "after effects", "capcut", "davinci", "illustrator", "lightroom", "media encoder", "capture one"]),
+        ("💬 Giao tiếp & Trợ lý", ["zalo", "telegram", "antigravity", "chatgpt", "claude", "anydesk"]),
+        ("🌐 Trình duyệt web", ["brave", "safari", "chrome", "coccoc"]),
+        ("⚙️ Tiện ích & Hệ thống", ["finder", "calendar", "notes", "calculator", "keka", "air explorer", "disk drill"]),
+    ]
+    curated = []
+    for cat_name, keywords in categories:
+        cat_apps = []
+        for kw in keywords:
+            name, path = match_app(kw)
+            if name and path and (name, path) not in cat_apps:
+                cat_apps.append((name, path))
+        if cat_apps:
+            curated.append({"category": cat_name, "apps": cat_apps})
+    return curated
+
+
+def get_trash_items(query: str | None = None, limit: int = 50) -> dict:
+    """Đọc danh sách và dung lượng file/thư mục trong Thùng rác (Trash) trên macOS (Chế độ chỉ đọc)."""
+    jxa_script = """
+    var finder = Application("Finder");
+    var items = finder.trash.items();
+    var list = [];
+    var totalSize = 0;
+    for (var i = 0; i < items.length; i++) {
+        var it = items[i];
+        var sz = 0;
+        try { sz = it.size() || 0; } catch(e) {}
+        totalSize += sz;
+        var mod = "";
+        try { mod = it.modificationDate().toLocaleString("vi-VN"); } catch(e) {}
+        var kind = "";
+        try { kind = it.kind() || ""; } catch(e) {}
+        var p = "";
+        try {
+            var u = it.url();
+            if (u) p = decodeURIComponent(u.replace(/^file:\\/\\//, ""));
+        } catch(e) {}
+        list.push({
+            name: it.name(),
+            size: sz,
+            kind: kind,
+            modified: mod,
+            path: p
+        });
+    }
+    JSON.stringify({total_count: items.length, total_size: totalSize, items: list});
+    """
+    try:
+        res = subprocess.run(["osascript", "-l", "JavaScript", "-e", jxa_script], capture_output=True, text=True, timeout=12)
+        if res.returncode == 0 and res.stdout.strip():
+            data = json.loads(res.stdout)
+            raw_items = data.get("items", [])
+            for it in raw_items:
+                it["size_human"] = format_size(it.get("size") or 0)
+                k = (it.get("kind") or "").lower()
+                it["is_dir"] = ("thư mục" in k or "folder" in k or "bộ sưu tập" in k)
+                it["icon"] = "📁" if it["is_dir"] else "📄"
+
+            # Lọc theo query nếu có
+            if query and query.strip():
+                q_norm = strip_accents(query.strip()).lower()
+                q_tokens = [w for w in re.split(r"[^a-z0-9]+", q_norm) if w]
+                matched = []
+                for it in raw_items:
+                    n_norm = strip_accents(it["name"]).lower()
+                    if q_norm in n_norm or (q_tokens and all(tk in n_norm for tk in q_tokens)):
+                        matched.append(it)
+                return {
+                    "ok": True,
+                    "query": query,
+                    "matched_count": len(matched),
+                    "total_count": data.get("total_count", 0),
+                    "total_size": data.get("total_size", 0),
+                    "total_size_human": format_size(data.get("total_size", 0)),
+                    "items": matched[:limit],
+                }
+
+            return {
+                "ok": True,
+                "total_count": data.get("total_count", 0),
+                "total_size": data.get("total_size", 0),
+                "total_size_human": format_size(data.get("total_size", 0)),
+                "items": raw_items[:limit],
+            }
+    except Exception as e:
+        return {"ok": False, "error": f"Không thể đọc thông tin Thùng rác: {e}"}
+
+    return {"ok": True, "total_count": 0, "total_size": 0, "total_size_human": "0 B", "items": []}
+
+
+def get_trash_summary() -> dict:
+    """Trả về nội dung tóm tắt Thùng rác (Trash) để hiển thị trong chat hoặc menu Telegram."""
+    res = get_trash_items(limit=10)
+    if not res.get("ok"):
+        return {"ok": False, "reply": res.get("error", "Lỗi đọc Thùng rác.")}
+
+    tc = res.get("total_count", 0)
+    ts_human = res.get("total_size_human", "0 B")
+    items = res.get("items", [])
+
+    if tc == 0:
+        return {
+            "ok": True,
+            "reply": "🗑 THÙNG RÁC (TRASH) HIỆN ĐANG TRỐNG!\n• Tổng dung lượng: 0 B\n• Không có file nào trong Thùng rác.",
+            "items": [],
+        }
+
+    lines = [
+        f"🗑 THÔNG TIN THÙNG RÁC (TRASH) TRÊN MÁY MAC:",
+        f"• Tổng số mục: {tc} file / thư mục",
+        f"• Tổng dung lượng đang chiếm: {ts_human}\n",
+        f"📋 Danh sách các mục gần nhất trong Thùng rác:",
+    ]
+    for idx, it in enumerate(items, 1):
+        mod_str = f" — {it['modified']}" if it.get("modified") else ""
+        lines.append(f"{idx}. {it['icon']} {it['name']} ({it['size_human']}){mod_str}")
+
+    if tc > len(items):
+        lines.append(f"\n... và còn {tc - len(items)} mục khác.")
+
+    lines.append("\n💡 Mẹo: Bạn có thể nhắn 'tìm <tên> trong thùng rác' để kiểm tra file cụ thể!")
+    return {"ok": True, "reply": "\n".join(lines), "items": items}
+
