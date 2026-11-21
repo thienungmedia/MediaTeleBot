@@ -1,11 +1,12 @@
 {
-  "version": "1.6.2",
-  "release_notes": "• Khắc phục lỗi phân quyền (-5000) khi khôi phục hoặc dời file từ Thùng rác (Trash) ra Desktop / thư mục đích (đặc biệt với các file ảnh chụp màn hình macOS và file xoá từ Finder).\n• Đảm bảo cơ chế đưa file ra khỏi Thùng rác bằng lệnh hệ thống của Finder rồi dời an toàn sang đúng thư mục chỉ định.\n• Kế thừa đầy đủ các tính năng v1.6.1: Khôi phục về thư mục ban đầu (Đưa trở lại / Put Back), nút bấm [♻️ Khôi phục], mở ứng dụng từ xa và kiểm tra Thùng rác.",
+  "version": "1.7.0",
+  "release_notes": "• Tính năng mới 1 — Chụp ảnh màn hình thực tế trên Telegram:\n  - Nhắn 'chụp màn hình', 'xem màn hình', 'chụp màn hình hd' (gửi file gốc 5K/Retina không nén), 'chụp màn hình có lưới' (kèm lưới toạ độ A1–H6) hoặc bấm nút [📸 Chụp Màn Hình].\n  - AI Vision đọc màn hình: 'xem màn hình premiere render tới đâu rồi' -> AI xem ảnh và tóm tắt tiến độ.\n• Tính năng mới 2 — Điều khiển máy Mac từ xa ngay trên Telegram:\n  - Click ô lưới A1–H6 ('click C3', 'double click D4', 'click phải B2') hoặc AI Vision Click tự nhiên ('bấm vào nút Xuất video', 'click vào Zalo').\n  - Gõ văn bản tiếng Việt ('gõ Xin chào rồi enter'), phím tắt ('bấm space', 'bấm cmd+s'), cuộn lên/xuống.\n  - Quản lý hệ thống: Xem CPU/RAM/Pin/App đang chạy ('tình trạng máy'), chuyển/đóng app, tăng giảm âm lượng, khoá màn hình.\n  - Kết nối full màn hình 60fps 1 chạm với RustDesk / AnyDesk kèm ảnh chụp ID tự động.",
   "files": {
     "bot.py": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/bot.py",
     "safe_fs.py": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/safe_fs.py",
     "gdrive_offload.py": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/gdrive_offload.py",
     "nl_engine.py": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/nl_engine.py",
+    "mac_remote.py": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/mac_remote.py",
     "llm_intent.py": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/llm_intent.py",
     "lunar_calendar.py": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/lunar_calendar.py",
     "zalo_sender.py": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/zalo_sender.py",

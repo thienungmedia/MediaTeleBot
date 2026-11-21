@@ -9,9 +9,11 @@ Trí tuệ nhân tạo Gemini tích hợp sẵn cho MacFileBot:
 3. Giữ nguyên chốt an toàn tuyệt đối 100%: Không bao giờ xoá hoặc ghi đè file.
 """
 
+import base64
 import datetime
 import json
 import os
+import re
 import ssl
 import urllib.request
 from pathlib import Path
@@ -179,6 +181,17 @@ Hãy dịch ý của họ thành ĐÚNG 1 DÒNG bắt đầu bằng `CMD: ` theo
    - Đổi thư mục upload Drive mặc định: `CMD: đặt thư mục mặc định là <tên thư mục>`
    - Cập nhật phần mềm bot: `CMD: cập nhật`
 
+12. CHỤP ẢNH MÀN HÌNH & ĐIỀU KHIỂN MÁY MAC TỪ XA:
+   - Chụp ảnh màn hình: `CMD: chụp màn hình` | Có lưới toạ độ A1-H6: `CMD: chụp màn hình có lưới` | Ảnh HD nét gốc: `CMD: chụp màn hình hd`
+   - Hỏi AI đọc nội dung trên màn hình: `CMD: xem màn hình <câu hỏi>` (vd: "coi thử premiere render xong chưa" -> `CMD: xem màn hình premiere render xong chưa`)
+   - Bảng điều khiển / Tình trạng máy: `CMD: bảng điều khiển` | `CMD: tình trạng máy`
+   - Click chuột theo ô lưới hoặc toạ độ: `CMD: click <ô lưới hoặc toạ độ>` (vd: `CMD: click C3`, `CMD: double click D4`, `CMD: click phải B2`)
+   - Click chuột thông minh bằng AI Vision: `CMD: click vào <mô tả nút trên màn hình>` (vd: "bấm vào nút Xuất video đi" -> `CMD: click vào nút Xuất video`)
+   - Gõ văn bản / bấm phím / cuộn chuột: `CMD: gõ <nội dung>` | `CMD: gõ và enter <nội dung>` | `CMD: bấm phím <tên phím hoặc tổ hợp>` (vd: `CMD: bấm phím space`, `CMD: bấm phím cmd+s`, `CMD: bấm phím enter`) | `CMD: cuộn xuống` | `CMD: cuộn lên`
+   - Chuyển hoặc thoát ứng dụng đang chạy: `CMD: chuyển sang <tên app>` | `CMD: tắt app <tên app>`
+   - Âm lượng & Màn hình: `CMD: tăng âm lượng` | `CMD: giảm âm lượng` | `CMD: tắt tiếng` | `CMD: âm lượng <số>%` | `CMD: khoá màn hình` | `CMD: đánh thức màn hình` | `CMD: tắt màn hình`
+   - Điều khiển full màn hình RustDesk / AnyDesk: `CMD: điều khiển rustdesk` | `CMD: điều khiển anydesk`
+
 ======================================================================
 CHẾ ĐỘ 2: `CHAT: <câu trả lời tự nhiên>`
 Khi người dùng KHÔNG yêu cầu các thao tác kỹ thuật ở Chế độ 1, mà muốn:
@@ -321,3 +334,108 @@ def rewrite_to_command(user_text: str) -> str | None:
     if res and res.get("mode") == "cmd":
         return res.get("command")
     return None
+
+
+def _call_gemini_vision(image_path: str, prompt_text: str, max_tokens: int = 500) -> str | None:
+    """Gọi Gemini Vision với ảnh JPEG local và prompt text."""
+    keys, model = _get_keys_and_model()
+    if not keys or not image_path or not os.path.exists(image_path):
+        return None
+    try:
+        with open(image_path, "rb") as fp:
+            b64_data = base64.b64encode(fp.read()).decode("ascii")
+    except Exception:
+        return None
+
+    body = {
+        "contents": [
+            {
+                "role": "user",
+                "parts": [
+                    {"inline_data": {"mime_type": "image/jpeg", "data": b64_data}},
+                    {"text": prompt_text},
+                ],
+            }
+        ],
+        "generationConfig": {"temperature": 0.1, "maxOutputTokens": max_tokens},
+    }
+    models = [model] + [m for m in FALLBACK_MODELS if m != model]
+    for api_key in keys:
+        for mdl in models:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{mdl}:generateContent"
+            req = urllib.request.Request(
+                url,
+                data=json.dumps(body).encode("utf-8"),
+                headers={"Content-Type": "application/json", "x-goog-api-key": api_key},
+            )
+            try:
+                with _urlopen_robust(req, timeout=22) as resp:
+                    data = json.loads(resp.read().decode("utf-8"))
+                txt = data["candidates"][0]["content"]["parts"][0]["text"].strip()
+                if txt:
+                    return txt
+            except Exception:
+                continue
+    return None
+
+
+def locate_ui_element_on_screen(image_path: str, target_desc: str) -> dict:
+    """Dùng Gemini Vision tìm toạ độ (0..1000) của phần tử UI trên ảnh màn hình."""
+    prompt = (
+        "Bạn là hệ thống AI Computer Use chuyên xác định toạ độ trên ảnh màn hình macOS.\n"
+        f"Hãy tìm phần tử giao diện khớp nhất với yêu cầu của người dùng: \"{target_desc}\".\n"
+        "Quy ước hệ toạ độ chuẩn hoá từ 0 đến 1000:\n"
+        "- x = 0 là mép trái ngoài cùng, x = 1000 là mép phải ngoài cùng.\n"
+        "- y = 0 là mép trên ngoài cùng, y = 1000 là mép dưới ngoài cùng.\n"
+        "Hãy trả về DUY NHẤT 1 đối tượng JSON hợp lệ (không giải thích thêm):\n"
+        "- Nếu tìm thấy tâm chính xác của nút/mục/vùng đó: "
+        "{\"found\": true, \"x\": <số nguyên 0..1000>, \"y\": <số nguyên 0..1000>, \"label\": \"<tên ngắn gọn của mục>\"}\n"
+        "- Nếu không nhìn thấy trên màn hình hiện tại: "
+        "{\"found\": false, \"reason\": \"<lý do ngắn gọn bằng tiếng Việt>\"}"
+    )
+    raw = _call_gemini_vision(image_path, prompt, max_tokens=250)
+    if not raw:
+        return {"found": False, "reason": "Không thể kết nối AI Vision để phân tích màn hình."}
+
+    cleaned = raw.strip()
+    m_code = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", cleaned, flags=re.DOTALL)
+    if m_code:
+        cleaned = m_code.group(1)
+    else:
+        m_brace = re.search(r"\{.*\}", cleaned, flags=re.DOTALL)
+        if m_brace:
+            cleaned = m_brace.group(0)
+
+    try:
+        obj = json.loads(cleaned)
+    except Exception:
+        return {"found": False, "reason": "AI không trả về được toạ độ JSON hợp lệ."}
+
+    if not obj.get("found"):
+        return {"found": False, "reason": obj.get("reason") or "Không thấy phần tử này trên màn hình."}
+
+    try:
+        x = float(obj["x"])
+        y = float(obj["y"])
+        if 0 <= x <= 1000 and 0 <= y <= 1000:
+            return {
+                "found": True,
+                "x": x,
+                "y": y,
+                "label": str(obj.get("label") or target_desc)[:60],
+            }
+    except Exception:
+        pass
+    return {"found": False, "reason": "Toạ độ AI trả về vượt phạm vi màn hình."}
+
+
+def analyze_screen_with_gemini(image_path: str, question: str) -> str | None:
+    """Dùng Gemini Vision đọc và tóm tắt nội dung hiển thị trên màn hình theo câu hỏi."""
+    q = (question or "").strip() or "Màn hình máy Mac hiện đang hiển thị gì?"
+    prompt = (
+        "Bạn là trợ lý AI đang nhìn ảnh chụp màn hình máy Mac của người dùng.\n"
+        f"Yêu cầu / câu hỏi của người dùng: \"{q}\"\n"
+        "Hãy trả lời ngắn gọn, súc tích, chính xác bằng tiếng Việt (3-6 dòng) về những gì thực tế đang hiển thị trên màn hình "
+        "(tên app đang mở, tiến độ render/tải lên nếu có, thông báo lỗi, nội dung chính)."
+    )
+    return _call_gemini_vision(image_path, prompt, max_tokens=500)

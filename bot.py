@@ -19,8 +19,10 @@ import threading
 import time
 import urllib.parse
 import urllib.request
+import uuid
 from pathlib import Path
 
+import mac_remote
 import safe_fs
 from safe_fs import (
     list_drives,
@@ -111,6 +113,78 @@ class TelegramClient:
             payload["reply_markup"] = reply_markup
         return self.call("sendMessage", payload)
 
+    @staticmethod
+    def _build_multipart(fields: dict, files: dict) -> tuple[bytes, str]:
+        boundary = f"----MacFileBotBoundary{uuid.uuid4().hex}"
+        chunks: list[bytes] = []
+        for k, v in fields.items():
+            if v is None:
+                continue
+            chunks.append(f"--{boundary}\r\n".encode("utf-8"))
+            chunks.append(f'Content-Disposition: form-data; name="{k}"\r\n\r\n'.encode("utf-8"))
+            chunks.append(str(v).encode("utf-8") + b"\r\n")
+        for field_name, file_tuple in files.items():
+            filename, raw_bytes, ctype = file_tuple
+            chunks.append(f"--{boundary}\r\n".encode("utf-8"))
+            chunks.append(
+                f'Content-Disposition: form-data; name="{field_name}"; filename="{filename}"\r\n'.encode("utf-8")
+            )
+            chunks.append(f"Content-Type: {ctype}\r\n\r\n".encode("utf-8"))
+            chunks.append(raw_bytes + b"\r\n")
+        chunks.append(f"--{boundary}--\r\n".encode("utf-8"))
+        return b"".join(chunks), f"multipart/form-data; boundary={boundary}"
+
+    def send_photo(
+        self,
+        chat_id: int,
+        photo_path: str,
+        caption: str = "",
+        reply_markup: dict | None = None,
+    ) -> dict:
+        p = Path(photo_path)
+        fields: dict = {"chat_id": str(chat_id)}
+        if caption:
+            fields["caption"] = caption[:1020]
+        if reply_markup:
+            fields["reply_markup"] = json.dumps(reply_markup, ensure_ascii=False)
+        body, ctype_header = self._build_multipart(
+            fields,
+            {"photo": (p.name, p.read_bytes(), "image/jpeg")},
+        )
+        req = urllib.request.Request(
+            f"{self.base_url}/sendPhoto",
+            data=body,
+            headers={"Content-Type": ctype_header},
+        )
+        with _urlopen_robust(req, timeout=45) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+
+    def send_document(
+        self,
+        chat_id: int,
+        file_path: str,
+        caption: str = "",
+        reply_markup: dict | None = None,
+    ) -> dict:
+        p = Path(file_path)
+        fields: dict = {"chat_id": str(chat_id)}
+        if caption:
+            fields["caption"] = caption[:1020]
+        if reply_markup:
+            fields["reply_markup"] = json.dumps(reply_markup, ensure_ascii=False)
+        ctype = "image/jpeg" if p.suffix.lower() in (".jpg", ".jpeg") else "application/octet-stream"
+        body, ctype_header = self._build_multipart(
+            fields,
+            {"document": (p.name, p.read_bytes(), ctype)},
+        )
+        req = urllib.request.Request(
+            f"{self.base_url}/sendDocument",
+            data=body,
+            headers={"Content-Type": ctype_header},
+        )
+        with _urlopen_robust(req, timeout=45) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+
     def answer_callback(self, callback_id: str, text: str = "") -> None:
         try:
             self.call("answerCallbackQuery", {"callback_query_id": callback_id, "text": text})
@@ -140,10 +214,60 @@ def get_registered_path(pid: str) -> str | None:
     return PATH_MAP.get(pid)
 
 
+RC_APP_MAP: dict[str, str] = {}
+RC_APP_REV: dict[str, str] = {}
+NEXT_APP_ID = 1
+
+
+def register_rc_app(app_name: str) -> str:
+    global NEXT_APP_ID
+    if app_name in RC_APP_REV:
+        return RC_APP_REV[app_name]
+    aid = f"a{NEXT_APP_ID}"
+    NEXT_APP_ID += 1
+    RC_APP_MAP[aid] = app_name
+    RC_APP_REV[app_name] = aid
+    return aid
+
+
+def get_rc_app(aid: str) -> str | None:
+    return RC_APP_MAP.get(aid)
+
+
 def send_nl_response(client: TelegramClient, chat_id: int, nl_res: dict) -> None:
     if nl_res.get("open_dir"):
         view_text, kb = format_dir_view(nl_res["open_dir"], chat_id)
         client.send_message(chat_id, view_text, reply_markup=kb)
+        return
+    if nl_res.get("document_path") and os.path.exists(nl_res["document_path"]):
+        reply_txt = nl_res.get("reply") or ""
+        client.send_document(
+            chat_id,
+            nl_res["document_path"],
+            caption=reply_txt[:1020],
+            reply_markup=nl_res.get("reply_markup"),
+        )
+        return
+    if nl_res.get("photo_path") and os.path.exists(nl_res["photo_path"]):
+        reply_txt = nl_res.get("reply") or ""
+        if len(reply_txt) <= 950:
+            client.send_photo(
+                chat_id,
+                nl_res["photo_path"],
+                caption=reply_txt,
+                reply_markup=nl_res.get("reply_markup"),
+            )
+        else:
+            client.send_photo(
+                chat_id,
+                nl_res["photo_path"],
+                caption=reply_txt[:220] + "...",
+            )
+            client.send_message(
+                chat_id,
+                reply_txt,
+                reply_markup=nl_res.get("reply_markup"),
+            )
         return
     if nl_res.get("reply_markup"):
         client.send_message(chat_id, nl_res["reply"], reply_markup=nl_res["reply_markup"])
@@ -306,6 +430,10 @@ def build_home_keyboard() -> dict:
         [
             {"text": "🗑 Thùng rác (Trash)", "callback_data": "trash_view"},
             {"text": "🚀 Mở Ứng dụng (Apps)", "callback_data": "apps_view"},
+        ],
+        [
+            {"text": "📸 Chụp Màn Hình", "callback_data": "rc_snap"},
+            {"text": "🎛 Điều Khiển Máy", "callback_data": "rc_panel"},
         ],
     ]
     return {"inline_keyboard": buttons}
@@ -798,6 +926,189 @@ def handle_callback(client: TelegramClient, cfg: dict, cb: dict) -> None:
         app_name = data.split(":", 1)[1]
         res = safe_fs.open_application(app_name)
         client.send_message(chat_id, res.get("reply") or res.get("error", "Không thể mở ứng dụng."))
+        return
+
+    def _send_rc_capture(caption_text: str, with_grid: bool = False, hd: bool = False) -> None:
+        cap = mac_remote.capture_screen(with_grid=with_grid, hd=hd)
+        if not cap.get("ok"):
+            markup = None
+            if cap.get("permission_error"):
+                markup = {
+                    "inline_keyboard": [
+                        [{"text": "⚙️ Mở Cài đặt Ghi màn hình", "callback_data": "rc_open_screen_perm"}],
+                        [{"text": "🏠 Về Menu chính", "callback_data": "home"}],
+                    ]
+                }
+            client.send_message(chat_id, cap.get("error", "❌ Không thể chụp màn hình."), reply_markup=markup)
+            return
+        if hd:
+            client.send_document(
+                chat_id,
+                cap["path"],
+                caption=caption_text[:1020],
+                reply_markup=mac_remote.build_remote_keyboard(grid_mode=False),
+            )
+            return
+        client.send_photo(
+            chat_id,
+            cap["path"],
+            caption=caption_text[:1020],
+            reply_markup=mac_remote.build_remote_keyboard(grid_mode=with_grid),
+        )
+
+    if data == "rc_snap":
+        front = mac_remote.get_running_apps().get("front") or "macOS"
+        _send_rc_capture(f"📸 ẢNH MÀN HÌNH THỰC TẾ\n• App đang mở chính: *{front}*", with_grid=False)
+        return
+
+    if data == "rc_grid":
+        _send_rc_capture(
+            "🎯 ẢNH MÀN HÌNH KÈM LƯỚI TOẠ ĐỘ (A1–H6)\n👉 Nhắn `click C3` (hoặc `double click D4`, `click phải B2`) để bấm!",
+            with_grid=True,
+        )
+        return
+
+    if data == "rc_hd":
+        front = mac_remote.get_running_apps().get("front") or "macOS"
+        _send_rc_capture(f"🔍 ẢNH MÀN HÌNH GỐC HD KHÔNG NÉN\n• App đang mở chính: *{front}*", hd=True)
+        return
+
+    if data == "rc_panel":
+        _send_rc_capture(
+            "🎛 TRUNG TÂM ĐIỀU KHIỂN MÁY MAC TỪ XA:\n"
+            "• Click ô lưới: `click C3`, `double click D4`, `click phải B2`\n"
+            "• AI Vision Click: `bấm vào nút Xuất video`, `click vào Zalo`\n"
+            "• Gõ chữ & phím: `gõ Xin chào rồi enter`, `bấm cmd+s`\n"
+            "• Hoặc chạm trực tiếp vào bảng nút bấm bên dưới!",
+            with_grid=True,
+        )
+        return
+
+    if data.startswith("rc_key:"):
+        kspec = data.split(":", 1)[1]
+        res = mac_remote.press_key(kspec)
+        if not res.get("ok"):
+            client.send_message(chat_id, res.get("error", "❌ Không thể bấm phím."))
+            return
+        time.sleep(0.6)
+        _send_rc_capture(res.get("reply", f"⌨️ Đã bấm phím `{kspec}`"), with_grid=False)
+        return
+
+    if data.startswith("rc_scroll:"):
+        direction = data.split(":", 1)[1]
+        res = mac_remote.mouse_scroll(direction)
+        if not res.get("ok"):
+            client.send_message(chat_id, res.get("error", "❌ Không thể cuộn chuột."))
+            return
+        time.sleep(0.5)
+        _send_rc_capture(res.get("reply", "🖱 Đã cuộn màn hình."), with_grid=False)
+        return
+
+    if data.startswith("rc_vol:"):
+        act = data.split(":", 1)[1]
+        res = mac_remote.set_volume(act)
+        client.send_message(
+            chat_id,
+            res.get("reply") or res.get("error", "❌ Lỗi âm lượng."),
+            reply_markup=mac_remote.build_remote_keyboard(grid_mode=False),
+        )
+        return
+
+    if data == "rc_lock":
+        res = mac_remote.lock_screen()
+        client.send_message(
+            chat_id,
+            res.get("reply") or res.get("error", "❌ Không thể khoá màn hình."),
+            reply_markup=mac_remote.build_remote_keyboard(grid_mode=False),
+        )
+        return
+
+    if data == "rc_status":
+        st = mac_remote.get_system_status()
+        kb = [
+            [
+                {"text": "📸 Chụp Màn Hình", "callback_data": "rc_snap"},
+                {"text": "📱 App đang chạy", "callback_data": "rc_apps"},
+            ],
+            [{"text": "🏠 Về Menu chính", "callback_data": "home"}],
+        ]
+        client.send_message(chat_id, st.get("reply", ""), reply_markup={"inline_keyboard": kb})
+        return
+
+    if data == "rc_apps":
+        info = mac_remote.get_running_apps()
+        front = info.get("front") or "Không rõ"
+        apps = info.get("apps", [])[:8]
+        kb = []
+        for app_name in apps:
+            aid = register_rc_app(app_name)
+            short_n = app_name[:22] + "..." if len(app_name) > 24 else app_name
+            kb.append([
+                {"text": f"🪟 Mở: {short_n}", "callback_data": f"rc_focus:{aid}"},
+                {"text": "❌ Đóng", "callback_data": f"rc_quit:{aid}"},
+            ])
+        kb.append([
+            {"text": "📸 Chụp Màn Hình", "callback_data": "rc_snap"},
+            {"text": "🏠 Về Menu chính", "callback_data": "home"},
+        ])
+        client.send_message(
+            chat_id,
+            f"📱 CÁC ỨNG DỤNG ĐANG CHẠY TRÊN MÁY MAC:\n• Đang mở phía trước: *{front}*\n👉 Bấm *Mở* để chuyển cửa sổ ngay và chụp ảnh màn hình, hoặc *Đóng* để thoát nhẹ nhàng:",
+            reply_markup={"inline_keyboard": kb},
+        )
+        return
+
+    if data.startswith("rc_focus:"):
+        aid = data.split(":", 1)[1]
+        app_name = get_rc_app(aid)
+        if not app_name:
+            client.send_message(chat_id, "⚠️ Phiên nút bấm đã hết hạn, vui lòng bấm lại [📱 App đang chạy].")
+            return
+        res = mac_remote.focus_app(app_name)
+        if not res.get("ok"):
+            client.send_message(chat_id, res.get("error", "❌ Không thể chuyển ứng dụng."))
+            return
+        time.sleep(0.5)
+        _send_rc_capture(res.get("reply", f"🪟 Đã chuyển sang *{app_name}*."), with_grid=False)
+        return
+
+    if data.startswith("rc_quit:"):
+        aid = data.split(":", 1)[1]
+        app_name = get_rc_app(aid)
+        if not app_name:
+            client.send_message(chat_id, "⚠️ Phiên nút bấm đã hết hạn, vui lòng bấm lại [📱 App đang chạy].")
+            return
+        res = mac_remote.quit_app(app_name)
+        client.send_message(
+            chat_id,
+            res.get("reply") or res.get("error", "❌ Không thể thoát ứng dụng."),
+            reply_markup=mac_remote.build_remote_keyboard(grid_mode=False),
+        )
+        return
+
+    if data.startswith("rc_remote:"):
+        tool = data.split(":", 1)[1]
+        client.send_message(chat_id, f"⏳ Đang mở {tool.capitalize()} và chụp màn hình chứa mã kết nối...")
+        res = mac_remote.launch_remote_desktop(tool)
+        if res.get("photo_path") and os.path.exists(res["photo_path"]):
+            client.send_photo(
+                chat_id,
+                res["photo_path"],
+                caption=(res.get("reply") or "")[:1020],
+                reply_markup=mac_remote.build_remote_keyboard(grid_mode=False),
+            )
+        else:
+            client.send_message(chat_id, res.get("reply") or res.get("error", "❌ Không thể mở Remote Desktop."))
+        return
+
+    if data == "rc_open_screen_perm":
+        res = mac_remote.open_screen_recording_settings()
+        kb = [[{"text": "🔄 Thử chụp lại ngay", "callback_data": "rc_snap"}], [{"text": "🏠 Về Menu chính", "callback_data": "home"}]]
+        client.send_message(
+            chat_id,
+            res.get("reply") or res.get("error", ""),
+            reply_markup={"inline_keyboard": kb},
+        )
         return
 
     if data.startswith("qcp:") or data.startswith("qmv:") or data.startswith("qgd:"):

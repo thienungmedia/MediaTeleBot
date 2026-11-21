@@ -16,6 +16,7 @@ import shutil
 import time
 import unicodedata
 from pathlib import Path
+import mac_remote
 import safe_fs
 from safe_fs import (
     DEFAULT_GDRIVE_SUBFOLDER,
@@ -1128,6 +1129,465 @@ def _try_trash_dispatch(t: str, chat_id: int) -> dict | None:
     return None
 
 
+def _capture_with_perm_hint(
+    with_grid: bool = False,
+    mark_xy: tuple[float, float] | None = None,
+    hd: bool = False,
+) -> dict:
+    """Chụp màn hình và tự gắn nút Mở Cài đặt Ghi màn hình nếu macOS báo thiếu quyền."""
+    cap = mac_remote.capture_screen(with_grid=with_grid, mark_xy=mark_xy, hd=hd)
+    if not cap.get("ok") and cap.get("permission_error"):
+        cap["reply_markup"] = {
+            "inline_keyboard": [
+                [{"text": "⚙️ Mở Cài đặt Ghi màn hình", "callback_data": "rc_open_screen_perm"}],
+                [{"text": "🏠 Menu chính", "callback_data": "home"}],
+            ]
+        }
+    return cap
+
+
+def _try_remote_control_dispatch(t: str, chat_id: int) -> dict | None:
+    """
+    Xử lý chụp ảnh màn hình thực tế, AI Vision Click, bàn phím, chuột, quản lý hệ thống và Remote Desktop.
+    """
+    t_clean = t.strip()
+    t_lower = t_clean.lower()
+    t_norm = strip_accents(t_clean).lower()
+
+    # 1. Remote Desktop full 60fps (RustDesk / AnyDesk)
+    m_rd = re.search(
+        r"^(?:hãy\s+|giúp\s+tôi\s+|cho\s+tôi\s+)?(?:điều\s+khiển(?:\s+qua)?|kết\s+nối|bật|mở)\s+(rust\s*desk|any\s*desk)(?:\s+lấy\s+mã|\s+lấy\s+id|\s+để\s+điều\s+khiển)?$",
+        t_clean,
+        flags=re.IGNORECASE,
+    )
+    if m_rd and ("điều khiển" in t_lower or "kết nối" in t_lower or "lấy mã" in t_lower or "lấy id" in t_lower):
+        tool = m_rd.group(1)
+        res = mac_remote.launch_remote_desktop(tool)
+        out = {"handled": True, "reply": res.get("reply") or res.get("error", "")}
+        if res.get("photo_path"):
+            out["photo_path"] = res["photo_path"]
+            out["reply_markup"] = mac_remote.build_remote_keyboard(grid_mode=False)
+        return out
+
+    # 2. Chụp màn hình HD gốc (gửi nguyên file không nén)
+    if re.search(
+        r"^(?:chụp\s+(?:ảnh\s+|hình\s+)?màn\s+hình\s+hd|ảnh\s+gốc\s+màn\s+hình|chụp\s+nét\s+màn\s+hình|screenshot\s+hd)\b",
+        t_clean,
+        flags=re.IGNORECASE,
+    ):
+        cap = _capture_with_perm_hint(hd=True)
+        if not cap.get("ok"):
+            return {"handled": True, "reply": cap.get("error", ""), "reply_markup": cap.get("reply_markup")}
+        front = mac_remote.get_running_apps().get("front") or "macOS"
+        return {
+            "handled": True,
+            "document_path": cap["path"],
+            "reply": f"🔍 ẢNH MÀN HÌNH GỐC HD ({cap['logical_w']}×{cap['logical_h']} logic)\n• App đang mở: *{front}*",
+            "reply_markup": mac_remote.build_remote_keyboard(grid_mode=False),
+        }
+
+    # 3. Chụp màn hình có lưới A1-H6 / Bảng điều khiển từ xa
+    if re.search(
+        r"^(?:chụp\s+(?:ảnh\s+|hình\s+)?màn\s+hình\s+(?:có|kèm)\s+lưới|bật\s+lưới(?:\s+click)?|chụp\s+lưới)\b",
+        t_clean,
+        flags=re.IGNORECASE,
+    ):
+        cap = _capture_with_perm_hint(with_grid=True)
+        if not cap.get("ok"):
+            return {"handled": True, "reply": cap.get("error", ""), "reply_markup": cap.get("reply_markup")}
+        return {
+            "handled": True,
+            "photo_path": cap["path"],
+            "reply": (
+                "🎯 ẢNH MÀN HÌNH KÈM LƯỚI TOẠ ĐỘ (A1–H6)\n"
+                "👉 Nhắn `click C3` (hoặc `double click D4`, `click phải B2`) để bấm chính xác vào ô bạn muốn!"
+            ),
+            "reply_markup": mac_remote.build_remote_keyboard(grid_mode=True),
+        }
+
+    if t_norm in (
+        "bang dieu khien", "dieu khien may", "dieu khien tu xa", "dieu khien",
+        "remote", "remote control", "mo bang dieu khien", "bat bang dieu khien"
+    ):
+        cap = _capture_with_perm_hint(with_grid=True)
+        if not cap.get("ok"):
+            return {"handled": True, "reply": cap.get("error", ""), "reply_markup": cap.get("reply_markup")}
+        return {
+            "handled": True,
+            "photo_path": cap["path"],
+            "reply": (
+                "🎛 TRUNG TÂM ĐIỀU KHIỂN MÁY MAC TỪ XA:\n"
+                "• Click ô lưới: `click C3`, `double click D4`, `click phải B2`\n"
+                "• AI Vision Click: `bấm vào nút Xuất video`, `click vào Zalo`\n"
+                "• Bàn phím & cuộn: `gõ Xin chào rồi enter`, `bấm cmd+s`, `cuộn xuống`\n"
+                "• Hoặc bấm trực tiếp các nút bên dưới!"
+            ),
+            "reply_markup": mac_remote.build_remote_keyboard(grid_mode=True),
+        }
+
+    # 4. Hỏi AI đọc / kiểm tra nội dung thực tế trên màn hình
+    m_vision_ask = re.search(
+        r"^(?:xem|coi|đọc|kiểm\s+tra|nhìn)\s+(?:giùm\s+)?(?:trên\s+)?màn\s+hình\s+(?:xem\s+|coi\s+)?(.+)$",
+        t_clean,
+        flags=re.IGNORECASE,
+    )
+    if m_vision_ask:
+        question = m_vision_ask.group(1).strip()
+        if strip_accents(question).lower() not in ("", "hd", "co luoi", "kem luoi", "cho toi", "giup toi"):
+            cap = _capture_with_perm_hint(with_grid=False)
+            if not cap.get("ok"):
+                return {"handled": True, "reply": cap.get("error", ""), "reply_markup": cap.get("reply_markup")}
+            import llm_intent
+            ai_desc = llm_intent.analyze_screen_with_gemini(cap["path"], question)
+            front = mac_remote.get_running_apps().get("front") or "macOS"
+            reply_txt = (
+                f"👁 PHÂN TÍCH MÀN HÌNH THỰC TẾ (App chính: *{front}*):\n\n{ai_desc}"
+                if ai_desc
+                else f"📸 Ảnh màn hình thực tế hiện tại (App chính: *{front}*):"
+            )
+            return {
+                "handled": True,
+                "photo_path": cap["path"],
+                "reply": reply_txt,
+                "reply_markup": mac_remote.build_remote_keyboard(grid_mode=False),
+            }
+
+    # 5. Chụp màn hình tiêu chuẩn
+    if (
+        t_norm in (
+            "chup man hinh", "chup anh man hinh", "chup cai man hinh", "chup hinh man hinh",
+            "screenshot", "xem man hinh", "coi man hinh", "tinh hinh man hinh", "xem may", "coi may"
+        )
+        or re.search(
+            r"^(?:hãy\s+|giúp\s+tôi\s+|cho\s+tôi\s+)?chụp\s+(?:giùm\s+|cho\s+tôi\s+)?(?:lại\s+)?(?:ảnh\s+|hình\s+|cái\s+)?màn\s+hình(?:\s+(?:máy|hiện\s+tại|xem|nhé|đi|với))*\s*$",
+            t_clean,
+            flags=re.IGNORECASE,
+        )
+        or re.search(
+            r"^(?:màn\s+hình|máy)\s+(?:đang\s+)?(?:hiển\s+thị|hiện|làm|mở)\s+gì(?:\s*\?)?$",
+            t_clean,
+            flags=re.IGNORECASE,
+        )
+    ):
+        cap = _capture_with_perm_hint(with_grid=False)
+        if not cap.get("ok"):
+            return {"handled": True, "reply": cap.get("error", ""), "reply_markup": cap.get("reply_markup")}
+        front = mac_remote.get_running_apps().get("front") or "macOS"
+        extra_note = ""
+        if re.search(r"(?:hiển\s+thị|hiện|làm|mở)\s+gì", t_clean, flags=re.IGNORECASE):
+            import llm_intent
+            ai_desc = llm_intent.analyze_screen_with_gemini(cap["path"], t_clean)
+            if ai_desc:
+                extra_note = f"\n\n👁 *AI tóm tắt:*\n{ai_desc}"
+        return {
+            "handled": True,
+            "photo_path": cap["path"],
+            "reply": (
+                f"📸 ẢNH MÀN HÌNH THỰC TẾ ({cap['logical_w']}×{cap['logical_h']})\n"
+                f"• App đang hiển thị: *{front}*{extra_note}"
+            ),
+            "reply_markup": mac_remote.build_remote_keyboard(grid_mode=False),
+        }
+
+    # 6. Tình trạng máy / App đang chạy
+    if t_norm in (
+        "tinh trang may", "kiem tra may", "tinh trang he thong", "cpu ram",
+        "may dang chay gi", "app dang chay", "cac app dang chay", "dang mo app gi",
+        "check may", "status may"
+    ) or re.search(r"^(?:kiểm\s*tra|xem)\s+(?:tình\s+trạng\s+máy|cpu|ram|pin\s+máy|các\s+app\s+đang\s+chạy)\b", t_clean, flags=re.IGNORECASE):
+        st = mac_remote.get_system_status()
+        return {
+            "handled": True,
+            "reply": st.get("reply", ""),
+            "reply_markup": {
+                "inline_keyboard": [
+                    [
+                        {"text": "📸 Chụp Màn Hình", "callback_data": "rc_snap"},
+                        {"text": "📱 Quản lý App đang chạy", "callback_data": "rc_apps"},
+                    ],
+                    [
+                        {"text": "🎛 Bảng Điều Khiển", "callback_data": "rc_panel"},
+                        {"text": "🏠 Menu chính", "callback_data": "home"},
+                    ],
+                ]
+            },
+        }
+
+    # 7. Âm lượng & Màn hình (tăng/giảm/mute/khoá/tắt/đánh thức)
+    if re.search(r"^(?:tăng\s+âm\s+lượng|âm\s+lượng\s+tăng|mở\s+to\s+(?:lên|tiếng)|to\s+tiếng\s+lên|vol\+)$", t_clean, flags=re.IGNORECASE):
+        res = mac_remote.set_volume("up")
+        return {"handled": True, "reply": res.get("reply") or res.get("error", "")}
+    if re.search(r"^(?:giảm\s+âm\s+lượng|âm\s+lượng\s+giảm|nhỏ\s+tiếng\s+(?:lại|xuống)|vol-)$", t_clean, flags=re.IGNORECASE):
+        res = mac_remote.set_volume("down")
+        return {"handled": True, "reply": res.get("reply") or res.get("error", "")}
+    if re.search(r"^(?:tắt\s+tiếng|mute|tắt\s+âm|im\s+lặng)$", t_clean, flags=re.IGNORECASE):
+        res = mac_remote.set_volume("mute")
+        return {"handled": True, "reply": res.get("reply") or res.get("error", "")}
+    if re.search(r"^(?:bật\s+tiếng|mở\s+tiếng|bỏ\s+tắt\s+tiếng|unmute)$", t_clean, flags=re.IGNORECASE):
+        res = mac_remote.set_volume("unmute")
+        return {"handled": True, "reply": res.get("reply") or res.get("error", "")}
+    m_vol = re.search(r"^(?:đặt\s+|chỉnh\s+)?âm\s+lượng\s+(\d{1,3})\s*%?$", t_clean, flags=re.IGNORECASE)
+    if m_vol:
+        res = mac_remote.set_volume("set", int(m_vol.group(1)))
+        return {"handled": True, "reply": res.get("reply") or res.get("error", "")}
+
+    if t_norm in ("khoa man hinh", "khoa may", "lock man hinh", "lock may", "khoa may mac"):
+        res = mac_remote.lock_screen()
+        return {"handled": True, "reply": res.get("reply") or res.get("error", "")}
+    if t_norm in ("tat man hinh", "ngu man hinh", "sleep man hinh", "sleep display"):
+        res = mac_remote.sleep_display()
+        return {"handled": True, "reply": res.get("reply") or res.get("error", "")}
+    if t_norm in ("danh thuc man hinh", "bat man hinh", "mo sang man hinh", "wake screen"):
+        mac_remote.wake_display()
+        time.sleep(0.5)
+        cap = _capture_with_perm_hint(with_grid=False)
+        if cap.get("ok"):
+            return {
+                "handled": True,
+                "photo_path": cap["path"],
+                "reply": "☀️ Đã đánh thức màn hình máy Mac!",
+                "reply_markup": mac_remote.build_remote_keyboard(grid_mode=False),
+            }
+        return {"handled": True, "reply": "☀️ Đã gửi tín hiệu đánh thức màn hình máy Mac."}
+
+    # 8. Chuyển sang app / Tắt app đang chạy
+    m_focus = re.search(
+        r"^(?:chuyển\s+(?:màn\s+hình\s+)?sang|qua\s+(?:app|cửa\s+sổ)|mở\s+cửa\s+sổ|bật\s+cửa\s+sổ)\s+(.+)$",
+        t_clean,
+        flags=re.IGNORECASE,
+    )
+    if m_focus:
+        app_q = clean_polite_phrases(m_focus.group(1))
+        res = mac_remote.focus_app(app_q)
+        if not res.get("ok"):
+            return {"handled": True, "reply": res.get("error", "")}
+        time.sleep(0.5)
+        cap = _capture_with_perm_hint(with_grid=False)
+        if cap.get("ok"):
+            return {
+                "handled": True,
+                "photo_path": cap["path"],
+                "reply": res.get("reply", ""),
+                "reply_markup": mac_remote.build_remote_keyboard(grid_mode=False),
+            }
+        return {"handled": True, "reply": res.get("reply", "")}
+
+    m_quit = re.search(
+        r"^(?:tắt|đóng|thoát)\s+(?:app|ứng\s*dụng|phần\s*mềm)\s+(.+)$",
+        t_clean,
+        flags=re.IGNORECASE,
+    )
+    if m_quit:
+        app_q = clean_polite_phrases(m_quit.group(1))
+        res = mac_remote.quit_app(app_q)
+        return {"handled": True, "reply": res.get("reply") or res.get("error", "")}
+
+    # 9. Cuộn chuột
+    if t_norm in ("cuon xuong", "keo xuong", "luot xuong", "scroll down") or re.search(
+        r"^(?:cuộn|kéo|lướt)\s+xuống(?:\s+\d+)?$", t_clean, flags=re.IGNORECASE
+    ):
+        mac_remote.mouse_scroll("down")
+        time.sleep(0.5)
+        cap = _capture_with_perm_hint(with_grid=False)
+        if cap.get("ok"):
+            return {
+                "handled": True,
+                "photo_path": cap["path"],
+                "reply": "⬇️ Đã cuộn màn hình xuống.",
+                "reply_markup": mac_remote.build_remote_keyboard(grid_mode=False),
+            }
+        return {"handled": True, "reply": "⬇️ Đã cuộn màn hình xuống."}
+
+    if t_norm in ("cuon len", "keo len", "luot len", "scroll up") or re.search(
+        r"^(?:cuộn|kéo|lướt)\s+lên(?:\s+\d+)?$", t_clean, flags=re.IGNORECASE
+    ):
+        mac_remote.mouse_scroll("up")
+        time.sleep(0.5)
+        cap = _capture_with_perm_hint(with_grid=False)
+        if cap.get("ok"):
+            return {
+                "handled": True,
+                "photo_path": cap["path"],
+                "reply": "⬆️ Đã cuộn màn hình lên.",
+                "reply_markup": mac_remote.build_remote_keyboard(grid_mode=False),
+            }
+        return {"handled": True, "reply": "⬆️ Đã cuộn màn hình lên."}
+
+    # 10. Gõ văn bản tiếng Việt / Enter
+    m_type_ent = re.search(
+        r"^(?:gõ|nhập)\s+(?:và\s+enter\s+|chữ\s+|text\s+)?(.+?)\s+(?:rồi|và)\s+(?:enter|gửi)\s*$",
+        t_clean,
+        flags=re.IGNORECASE,
+    ) or re.search(
+        r"^(?:gõ|nhập)\s+và\s+(?:enter|gửi)\s+(.+)$",
+        t_clean,
+        flags=re.IGNORECASE,
+    )
+    if m_type_ent:
+        txt = m_type_ent.group(1).strip().strip("\"'")
+        res = mac_remote.type_text(txt, press_enter=True)
+        if not res.get("ok"):
+            return {"handled": True, "reply": res.get("error", "")}
+        time.sleep(0.6)
+        cap = _capture_with_perm_hint(with_grid=False)
+        if cap.get("ok"):
+            return {
+                "handled": True,
+                "photo_path": cap["path"],
+                "reply": res["reply"],
+                "reply_markup": mac_remote.build_remote_keyboard(grid_mode=False),
+            }
+        return {"handled": True, "reply": res["reply"]}
+
+    m_type = re.search(
+        r"^(?:gõ|nhập)\s+(?:chữ\s+|text\s+|văn\s+bản\s+)?(.+)$",
+        t_clean,
+        flags=re.IGNORECASE,
+    )
+    if m_type:
+        txt = m_type.group(1).strip().strip("\"'")
+        res = mac_remote.type_text(txt, press_enter=False)
+        if not res.get("ok"):
+            return {"handled": True, "reply": res.get("error", "")}
+        time.sleep(0.5)
+        cap = _capture_with_perm_hint(with_grid=False)
+        if cap.get("ok"):
+            return {
+                "handled": True,
+                "photo_path": cap["path"],
+                "reply": res["reply"],
+                "reply_markup": mac_remote.build_remote_keyboard(grid_mode=False),
+            }
+        return {"handled": True, "reply": res["reply"]}
+
+    # 11. Bấm phím / Tổ hợp phím tắt
+    m_key = re.search(
+        r"^(?:bấm|nhấn|gửi)\s+(?:phím|tổ\s+hợp\s+phím|nút)\s+(.+)$",
+        t_clean,
+        flags=re.IGNORECASE,
+    ) or re.search(
+        r"^(?:bấm|nhấn)\s+(enter|return|space|cách|esc|escape|tab|backspace|up|down|left|right|home|end|pageup|pagedown|(?:cmd|command|ctrl|control|opt|option|alt|shift)\s*[+\-].+)$",
+        t_clean,
+        flags=re.IGNORECASE,
+    )
+    if m_key:
+        kspec = m_key.group(1).strip()
+        # Phân biệt "bấm nút Xuất video" (AI Click) vs "bấm nút enter" (Key)
+        kspec_norm = strip_accents(kspec).lower()
+        is_direct_key = (
+            kspec_norm in ("enter", "return", "space", "cach", "esc", "escape", "tab", "backspace", "delete", "up", "down", "left", "right", "home", "end", "pageup", "pagedown")
+            or "+" in kspec_norm
+            or re.match(r"^(?:cmd|command|ctrl|control|opt|option|alt|shift)\b", kspec_norm)
+        )
+        if is_direct_key or "phim" in t_norm:
+            res = mac_remote.press_key(kspec)
+            if not res.get("ok"):
+                return {"handled": True, "reply": res.get("error", "")}
+            time.sleep(0.6)
+            cap = _capture_with_perm_hint(with_grid=False)
+            if cap.get("ok"):
+                return {
+                    "handled": True,
+                    "photo_path": cap["path"],
+                    "reply": res["reply"],
+                    "reply_markup": mac_remote.build_remote_keyboard(grid_mode=False),
+                }
+            return {"handled": True, "reply": res["reply"]}
+
+    # 12. Click chuột (Theo ô lưới A1-H6 / pixel / AI Vision Click)
+    click_btn = "left"
+    click_count = 1
+    click_target = None
+
+    m_dbl = re.search(
+        r"^(?:double\s*click|click\s+đúp|nhấp\s+đúp|bấm\s+đúp|nhấn\s+đúp)(?:\s+vào)?\s+(.+)$",
+        t_clean,
+        flags=re.IGNORECASE,
+    )
+    m_right = re.search(
+        r"^(?:right\s*click|click\s+phải|chuột\s+phải|bấm\s+phải|nhấp\s+phải)(?:\s+vào)?\s+(.+)$",
+        t_clean,
+        flags=re.IGNORECASE,
+    )
+    m_left = re.search(
+        r"^(?:click(?:\s+vào)?|nhấp(?:\s+vào)?|bấm\s+vào|nhấn\s+vào|bấm\s+nút|nhấn\s+nút)\s+(.+)$",
+        t_clean,
+        flags=re.IGNORECASE,
+    )
+
+    if m_dbl:
+        click_count = 2
+        click_target = m_dbl.group(1).strip()
+    elif m_right:
+        click_btn = "right"
+        click_target = m_right.group(1).strip()
+    elif m_left:
+        click_target = m_left.group(1).strip()
+
+    if click_target:
+        verb = "double-click" if click_count == 2 else ("click phải" if click_btn == "right" else "click")
+        coords = mac_remote.grid_cell_to_logical_xy(click_target)
+        if coords:
+            mc = mac_remote.mouse_click(coords[0], coords[1], button=click_btn, clicks=click_count)
+            if not mc.get("ok"):
+                return {"handled": True, "reply": mc.get("error", "")}
+            time.sleep(0.7)
+            cap = _capture_with_perm_hint(with_grid=True, mark_xy=(mc["norm_x"], mc["norm_y"]))
+            msg = f"🎯 Đã {verb} vào `{click_target}` (toạ độ {int(mc['x'])}, {int(mc['y'])}) — dấu tròn đỏ trên ảnh."
+            if cap.get("ok"):
+                return {
+                    "handled": True,
+                    "photo_path": cap["path"],
+                    "reply": msg,
+                    "reply_markup": mac_remote.build_remote_keyboard(grid_mode=True),
+                }
+            return {"handled": True, "reply": msg}
+
+        # Không khớp ô lưới/pixel -> Dùng AI Vision Click (Gemini Vision)
+        cap0 = _capture_with_perm_hint(with_grid=False)
+        if not cap0.get("ok"):
+            return {"handled": True, "reply": cap0.get("error", ""), "reply_markup": cap0.get("reply_markup")}
+        import llm_intent
+        loc = llm_intent.locate_ui_element_on_screen(cap0["path"], click_target)
+        if loc.get("found"):
+            lw, lh = mac_remote.get_screen_size()
+            tx = (loc["x"] / 1000.0) * lw
+            ty = (loc["y"] / 1000.0) * lh
+            mc = mac_remote.mouse_click(tx, ty, button=click_btn, clicks=click_count)
+            if not mc.get("ok"):
+                return {"handled": True, "reply": mc.get("error", "")}
+            time.sleep(0.9)
+            cap_after = _capture_with_perm_hint(with_grid=True, mark_xy=(mc["norm_x"], mc["norm_y"]))
+            lbl = loc.get("label", click_target)
+            msg = f"🎯 AI đã {verb} vào *'{lbl}'* (toạ độ ~{int(tx)}, {int(ty)})."
+            if cap_after.get("ok"):
+                return {
+                    "handled": True,
+                    "photo_path": cap_after["path"],
+                    "reply": msg,
+                    "reply_markup": mac_remote.build_remote_keyboard(grid_mode=True),
+                }
+            return {"handled": True, "reply": msg}
+
+        # Fallback: Gửi ảnh kèm lưới để người dùng chọn ô
+        cap_grid = _capture_with_perm_hint(with_grid=True)
+        reason = loc.get("reason", "Không xác định được vị trí nút.")
+        msg = (
+            f"⚠️ AI Vision chưa tìm chắc chắn mục '{click_target}' ({reason}).\n"
+            f"👉 Bạn hãy xem ô lưới trên ảnh và nhắn `click C3` (hoặc ô tương ứng) để bấm chuẩn xác nhé!"
+        )
+        if cap_grid.get("ok"):
+            return {
+                "handled": True,
+                "photo_path": cap_grid["path"],
+                "reply": msg,
+                "reply_markup": mac_remote.build_remote_keyboard(grid_mode=True),
+            }
+        return {"handled": True, "reply": msg}
+
+    return None
+
+
 def _try_app_dispatch(t: str, chat_id: int) -> dict | None:
     """
     Xử lý yêu cầu mở ứng dụng (Applications) từ xa trên máy Mac hoặc xem danh sách app.
@@ -1443,6 +1903,11 @@ def parse_and_execute_nl(text: str, chat_id: int = 0, _from_llm: bool = False) -
     trash_res = _try_trash_dispatch(t, chat_id)
     if trash_res:
         return trash_res
+
+    # 0.365 Chụp ảnh màn hình, AI Vision Click & Điều khiển máy Mac từ xa
+    remote_res = _try_remote_control_dispatch(t, chat_id)
+    if remote_res:
+        return remote_res
 
     # 0.37 Mở Ứng Dụng (Apps) / Danh sách phần mềm
     app_res = _try_app_dispatch(t, chat_id)
