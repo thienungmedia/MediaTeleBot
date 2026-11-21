@@ -737,8 +737,43 @@ def handle_callback(client: TelegramClient, cfg: dict, cb: dict) -> None:
 
     if data == "trash_view":
         summary = safe_fs.get_trash_summary()
-        kb = [[{"text": "🏠 Về Menu chính", "callback_data": "home"}]]
+        kb = []
+        for it in summary.get("items", [])[:6]:
+            pid = register_path(it["name"])
+            short_name = it["name"] if len(it["name"]) <= 28 else it["name"][:25] + "..."
+            kb.append([{"text": f"♻️ Khôi phục: {short_name}", "callback_data": f"restore_trash:{pid}"}])
+        kb.append([{"text": "🏠 Về Menu chính", "callback_data": "home"}])
         client.send_message(chat_id, summary.get("reply", ""), reply_markup={"inline_keyboard": kb})
+        return
+
+    if data.startswith("restore_trash:"):
+        pid = data.split(":", 1)[1]
+        item_name = get_registered_path(pid)
+        if not item_name:
+            summary = safe_fs.get_trash_summary()
+            kb = []
+            for it in summary.get("items", [])[:6]:
+                npid = register_path(it["name"])
+                sn = it["name"] if len(it["name"]) <= 28 else it["name"][:25] + "..."
+                kb.append([{"text": f"♻️ Khôi phục: {sn}", "callback_data": f"restore_trash:{npid}"}])
+            kb.append([{"text": "🏠 Về Menu chính", "callback_data": "home"}])
+            client.send_message(
+                chat_id,
+                "⚠️ Phiên nút bấm đã hết hạn. Danh sách Thùng rác mới nhất:\n\n" + summary.get("reply", ""),
+                reply_markup={"inline_keyboard": kb},
+            )
+            return
+        client.send_message(chat_id, f"♻️ Đang khôi phục '{item_name}' từ Thùng rác về lại thư mục ban đầu...")
+        res = safe_fs.restore_from_trash(item_name)
+        kb = [
+            [{"text": "🗑 Xem lại Thùng rác", "callback_data": "trash_view"}],
+            [{"text": "🏠 Về Menu chính", "callback_data": "home"}],
+        ]
+        client.send_message(
+            chat_id,
+            res.get("reply") or res.get("error", "❌ Không thể khôi phục mục này."),
+            reply_markup={"inline_keyboard": kb},
+        )
         return
 
     if data == "apps_view":

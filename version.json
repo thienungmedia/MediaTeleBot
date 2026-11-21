@@ -1,6 +1,6 @@
 {
-  "version": "1.6.0",
-  "release_notes": "• Tính năng mới 1: Mở ứng dụng / phần mềm từ xa trên máy Mac qua Telegram:\n  - Nhắn tự nhiên: 'mở premiere', 'bật capcut', 'mở photoshop', 'mở zalo', 'bật brave', 'mở app google drive'...\n  - Hỗ trợ viết tắt thông dụng trong dựng phim (pr, pts, ae, fcp, lr, me...).\n  - Xem danh sách phần mềm đang có trên máy: 'xem danh sách app'.\n  - Bổ sung nút [🚀 Mở Ứng dụng] trực tiếp trong Menu chính của Telegram.\n• Tính năng mới 2: Kiểm tra Thùng rác (Trash) trên máy Mac (Chế độ chỉ đọc an toàn 100%):\n  - Xem tổng số file và dung lượng đang chiếm: 'kiểm tra thùng rác', 'thùng rác nặng bao nhiêu'.\n  - Tìm kiếm file cụ thể trong thùng rác: 'tìm file X trong thùng rác'.\n  - Tự động phát hiện và cảnh báo nếu file người dùng tìm kiếm đang nằm trong Thùng rác (tránh mất file do vô tình xoá nhầm).\n  - Bổ sung nút [🗑 Thùng rác] trong Menu chính của Telegram.",
+  "version": "1.6.1",
+  "release_notes": "• Tính năng mới: Khôi phục file/thư mục từ Thùng rác (Trash) về lại đúng thư mục ban đầu (Đưa trở lại / Put Back):\n  - Nhắn tự nhiên: 'khôi phục <tên file>', 'chuyển file X trong thùng rác ra lại folder ban đầu', 'đưa X về chỗ cũ', 'lấy lại X từ thùng rác'...\n  - Hỗ trợ lấy từ Thùng rác sang một thư mục khác chỉ định: 'chuyển X từ thùng rác ra desktop' / 'qua film data'...\n  - Tích hợp nút bấm [♻️ Khôi phục: <tên file>] ngay dưới danh sách Thùng rác khi bấm [🗑 Thùng rác].\n• Kế thừa đầy đủ các tính năng v1.6.0: Mở ứng dụng từ xa (Premiere, CapCut, RustDesk, Zalo...) và kiểm tra/tìm kiếm file trong Thùng rác.",
   "files": {
     "bot.py": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/bot.py",
     "safe_fs.py": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/safe_fs.py",

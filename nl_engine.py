@@ -942,11 +942,123 @@ def _try_gdrive_offload_dispatch(t: str, chat_id: int) -> dict | None:
 
 def _try_trash_dispatch(t: str, chat_id: int) -> dict | None:
     """
-    Xử lý kiểm tra và tìm kiếm file trong Thùng rác (Trash) trên macOS (Chế độ chỉ đọc, an toàn 100%).
+    Xử lý kiểm tra, tìm kiếm và khôi phục file trong Thùng rác (Trash) trên macOS (an toàn 100%).
     """
     t_clean = t.strip()
     t_lower = t_clean.lower()
     t_norm = strip_accents(t_clean).lower()
+
+    # 0. Khôi phục / Chuyển file trong Thùng rác ra lại thư mục ban đầu (Put Back) hoặc thư mục chỉ định
+    restore_target = None
+    restore_dest_phrase = ""
+    matched_restore = False
+
+    # Nhóm A: "chuyển file A trong thùng rác ra lại folder ban đầu", "khôi phục A từ thùng rác", "lấy A trong thùng rác ra desktop"
+    m_tr_move = re.search(
+        r"^(?:hãy\s+|giúp\s+tôi\s+|cho\s+tôi\s+)?(?:khôi\s*phục|phục\s*hồi|đưa|chuyển|lấy|dời|trả|rút|đặt|restore|put\s*back)(?:\s+lại)?\s+(.+?)\s+(?:trong|từ|ở)\s+(?:thùng\s+rác|trash)(?:\s+(?:ra|về|sang|qua|vào|tới|đến|trở)\s*(.*))?$",
+        t_clean,
+        flags=re.IGNORECASE,
+    )
+    if m_tr_move:
+        matched_restore = True
+        restore_target = m_tr_move.group(1).strip()
+        restore_dest_phrase = (m_tr_move.group(2) or "").strip()
+
+    if not matched_restore:
+        # Nhóm A2: "lấy từ thùng rác file A ra lại folder ban đầu", "khôi phục trong thùng rác file A"
+        m_tr_move2 = re.search(
+            r"^(?:hãy\s+|giúp\s+tôi\s+|cho\s+tôi\s+)?(?:khôi\s*phục|phục\s*hồi|đưa|chuyển|lấy|dời|trả|rút|đặt|restore)(?:\s+lại)?\s+(?:trong|từ|ở)\s+(?:thùng\s+rác|trash)\s+(.+?)(?:\s+(?:ra|về|sang|qua|vào|tới|đến|trở)\s*(.*))?$",
+            t_clean,
+            flags=re.IGNORECASE,
+        )
+        if m_tr_move2:
+            matched_restore = True
+            restore_target = m_tr_move2.group(1).strip()
+            restore_dest_phrase = (m_tr_move2.group(2) or "").strip()
+
+    if not matched_restore:
+        # Nhóm A3: "lấy A ra khỏi thùng rác", "đưa file A ra khỏi thùng rác"
+        m_tr_out = re.search(
+            r"^(?:hãy\s+|giúp\s+tôi\s+|cho\s+tôi\s+)?(?:đưa|chuyển|lấy|dời|kéo|lôi)\s+(.+?)\s+ra\s+khỏi\s+(?:thùng\s+rác|trash)(?:\s+(?:ra|về|sang|qua|vào|tới|đến)\s*(.*))?$",
+            t_clean,
+            flags=re.IGNORECASE,
+        )
+        if m_tr_out:
+            matched_restore = True
+            restore_target = m_tr_out.group(1).strip()
+            restore_dest_phrase = (m_tr_out.group(2) or "").strip()
+
+    if not matched_restore:
+        # Nhóm B: "khôi phục file A", "phục hồi A", "đưa trở lại A", "hoàn tác xoá A", "restore A", "put back A"
+        m_direct_res = re.search(
+            r"^(?:hãy\s+|giúp\s+tôi\s+|cho\s+tôi\s+)?(?:khôi\s*phục|phục\s*hồi|đưa\s+trở\s+lại|đặt\s+lại|hoàn\s+tác\s*(?:xoá|xóa)?|restore|put\s*back)(?:\s+lại)?\s+(.+?)(?:\s+(?:về|ra|sang|qua|vào)\s+(?:lại\s+)?(?:folder|thư\s*mục|chỗ|vị\s*trí)\s*(?:ban\s*đầu|gốc|cũ))?$",
+            t_clean,
+            flags=re.IGNORECASE,
+        )
+        if m_direct_res:
+            matched_restore = True
+            restore_target = m_direct_res.group(1).strip()
+            restore_dest_phrase = ""
+
+    if not matched_restore:
+        # Nhóm C: "chuyển A ra lại folder ban đầu", "đưa file A về thư mục cũ"
+        m_orig = re.search(
+            r"^(?:hãy\s+|giúp\s+tôi\s+|cho\s+tôi\s+)?(?:chuyển|đưa|trả|lấy)\s+(.+?)\s+(?:ra\s+lại|về\s+lại|về|ra|trở\s+lại)\s+(?:folder|thư\s*mục|chỗ|vị\s*trí)\s+(?:ban\s*đầu|gốc|cũ)\s*$",
+            t_clean,
+            flags=re.IGNORECASE,
+        )
+        if m_orig:
+            matched_restore = True
+            restore_target = m_orig.group(1).strip()
+            restore_dest_phrase = ""
+
+    if matched_restore and restore_target is not None:
+        clean_target = clean_polite_phrases(restore_target)
+        clean_target = re.sub(
+            r"^(?:cái\s+)?(?:file|thư\s*mục|folder|mục|tệp|tập\s*tin)\s+",
+            "",
+            clean_target,
+            flags=re.IGNORECASE,
+        ).strip()
+        if (_is_context_pronoun(clean_target) or _is_context_pronoun(restore_target)) and LAST_CONTEXT.get(chat_id, {}).get("last_item"):
+            clean_target = LAST_CONTEXT[chat_id]["last_item"]
+
+        if not clean_target or clean_target.lower() in ("file", "thư mục", "folder", "mục"):
+            return {
+                "handled": True,
+                "reply": "ℹ️ Bạn muốn khôi phục file hay thư mục nào trong Thùng rác? Hãy nhắn kèm tên file (ví dụ: `khôi phục ảnh 001`).",
+            }
+
+        dest_dir = None
+        raw_d_norm = strip_accents(restore_dest_phrase.strip()).lower()
+        d_clean = clean_polite_phrases(restore_dest_phrase)
+        d_norm = strip_accents(d_clean).lower()
+        d_norm_clean = re.sub(r"^(?:lai|tro\s+lai|khoi|ben)\s+", "", d_norm).strip()
+        is_put_back = (
+            not d_norm_clean
+            or d_norm_clean in (
+                "lai", "tro lai", "folder ban dau", "thu muc ban dau", "thu muc goc",
+                "thu muc cu", "folder cu", "cho cu", "vi tri cu", "vi tri ban dau",
+                "ban dau", "mac dinh", "nhu cu", "cu", "goc", "ngoai", "ra"
+            )
+            or any(kw in raw_d_norm for kw in ("ban dau", "cho cu", "thu muc cu", "folder cu", "thu muc goc", "vi tri cu", "tro lai", "nhu cu"))
+            or any(kw in d_norm for kw in ("ban dau", "cho cu", "thu muc cu", "folder cu", "thu muc goc", "vi tri cu", "tro lai", "nhu cu"))
+        )
+        if not is_put_back and d_clean:
+            resolved = resolve_destination(d_clean)
+            if resolved and resolved.exists():
+                dest_dir = str(resolved)
+            else:
+                return {
+                    "handled": True,
+                    "reply": f"⚠️ Không tìm thấy thư mục đích `{d_clean}` để chuyển file từ Thùng rác tới.",
+                }
+
+        res = safe_fs.restore_from_trash(clean_target, dest_dir=dest_dir)
+        if res.get("ok"):
+            LAST_CONTEXT.setdefault(chat_id, {})["last_item"] = res.get("item_name", clean_target)
+            return {"handled": True, "reply": res.get("reply", "")}
+        return {"handled": True, "reply": res.get("error", "❌ Không thể khôi phục mục từ Thùng rác.")}
 
     # 1. Tìm kiếm file/thư mục cụ thể trong thùng rác
     # "tìm psc hằng cần trong thùng rác", "trong thùng rác có file 2810 không", "tìm trong thùng rác file test"
@@ -988,10 +1100,12 @@ def _try_trash_dispatch(t: str, chat_id: int) -> dict | None:
                 "reply": f"🔍 Không tìm thấy file/thư mục nào khớp với '{clean_target}' trong Thùng rác (Trash).",
             }
 
+        LAST_CONTEXT.setdefault(chat_id, {})["last_item"] = items[0]["name"]
         lines = [f"🗑 TÌM THẤY {len(items)} MỤC TRONG THÙNG RÁC cho '{clean_target}':\n"]
         for idx, it in enumerate(items, 1):
             mod_s = f" — Ngày bỏ: {it['modified']}" if it.get("modified") else ""
             lines.append(f"{idx}. {it['icon']} {it['name']} ({it['size_human']}){mod_s}\n   📍 `{it['path']}`")
+        lines.append(f"\n💡 Nhắn: `khôi phục {items[0]['name']}` để đưa file về lại thư mục ban đầu!")
         return {"handled": True, "reply": "\n".join(lines)}
 
     # 2. Xem thùng rác / Kiểm tra thùng rác / Dung lượng thùng rác

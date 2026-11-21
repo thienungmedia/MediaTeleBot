@@ -166,9 +166,12 @@ Hãy dịch ý của họ thành ĐÚNG 1 DÒNG bắt đầu bằng `CMD: ` theo
    - Mở ứng dụng từ xa: `CMD: mở app <tên>` (vd: `CMD: mở app premiere`, `CMD: mở app capcut`, `CMD: mở app zalo`, `CMD: mở app photoshop`, `CMD: mở app davinci resolve`, `CMD: mở app brave`)
    - Xem danh sách ứng dụng trên máy: `CMD: xem danh sách app`
 
-10. KIỂM TRA THÙNG RÁC (TRASH) TRÊN MÁY MAC:
+10. KIỂM TRA & KHÔI PHỤC FILE TRONG THÙNG RÁC (TRASH) TRÊN MÁY MAC:
    - Xem danh sách / dung lượng thùng rác: `CMD: kiểm tra thùng rác` (hoặc `CMD: thùng rác nặng bao nhiêu`)
    - Tìm file trong thùng rác: `CMD: tìm <tên> trong thùng rác` (vd: "tìm psc hằng cần trong thùng rác" -> `CMD: tìm psc hằng cần trong thùng rác`, "coi thùng rác có file cưới 2810 không" -> `CMD: tìm cưới 2810 trong thùng rác`)
+   - Khôi phục file từ thùng rác về lại thư mục ban đầu (Đưa trở lại / Put Back): `CMD: khôi phục <tên> trong thùng rác`
+     (Ví dụ: "chuyển file X trong thùng rác ra lại folder ban đầu", "đưa file cưới 2810 về chỗ cũ", "lấy lại file đó trong thùng rác", "khôi phục file vừa xoá" -> `CMD: khôi phục <tên> trong thùng rác`)
+   - Lấy file từ thùng rác ra một thư mục cụ thể: `CMD: chuyển <tên> từ thùng rác ra <nơi đến>`
 
 11. XEM BÊN TRONG THƯ MỤC / ĐỔI THƯ MỤC MẶC ĐỊNH / CẬP NHẬT BOT:
    - Mở xem thư mục/ổ đĩa: `CMD: xem trong <nơi> có gì` (vd: `CMD: xem trong desktop có gì`, `CMD: xem trong film data có gì`)

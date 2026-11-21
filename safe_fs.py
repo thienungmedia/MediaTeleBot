@@ -1570,6 +1570,224 @@ def get_trash_summary() -> dict:
     if tc > len(items):
         lines.append(f"\n... và còn {tc - len(items)} mục khác.")
 
-    lines.append("\n💡 Mẹo: Bạn có thể nhắn 'tìm <tên> trong thùng rác' để kiểm tra file cụ thể!")
+    lines.append("\n💡 Mẹo: Nhắn 'khôi phục <tên file>' để đưa file về lại thư mục ban đầu, hoặc bấm nút Khôi phục bên dưới!")
     return {"ok": True, "reply": "\n".join(lines), "items": items}
+
+
+def restore_from_trash(query: str, dest_dir: str | None = None) -> dict:
+    """Khôi phục file/thư mục từ Thùng rác về lại thư mục ban đầu (Đưa trở lại / Put Back) hoặc chuyển ra thư mục chỉ định."""
+    res = get_trash_items(query=query, limit=50)
+    if not res.get("ok"):
+        return {"ok": False, "error": res.get("error", "Không thể đọc Thùng rác.")}
+
+    items = res.get("items", [])
+    if not items:
+        return {
+            "ok": False,
+            "error": f"🔍 Không tìm thấy file hay thư mục nào khớp với '{query}' trong Thùng rác (Trash).",
+        }
+
+    q_norm = strip_accents(query.strip()).lower()
+    target_item = None
+    for it in items:
+        if strip_accents(it["name"]).lower() == q_norm:
+            target_item = it
+            break
+    if not target_item:
+        target_item = items[0]
+
+    target_name = target_item["name"]
+    size_human = target_item.get("size_human", "0 B")
+
+    if dest_dir:
+        jxa_move = r"""
+function run(argv) {
+    var targetName = argv[0].normalize("NFC");
+    var destDir = argv[1];
+    var finder = Application("Finder");
+    var items = finder.trash.items();
+    var target = null;
+    for (var i = 0; i < items.length; i++) {
+        if (items[i].name().normalize("NFC") === targetName) {
+            target = items[i];
+            break;
+        }
+    }
+    if (!target) {
+        return JSON.stringify({ok: false, error: "NOT_FOUND"});
+    }
+    try {
+        var moved = finder.move(target, {to: Path(destDir), replacing: false});
+        var finalPath = destDir;
+        try {
+            var u = moved.url();
+            if (u) finalPath = decodeURIComponent(u.replace(/^file:\/\//, ""));
+        } catch(e) {}
+        return JSON.stringify({ok: true, method: "move_to_dir", dest: finalPath});
+    } catch(e) {
+        return JSON.stringify({ok: false, error: String(e)});
+    }
+}
+"""
+        try:
+            run_res = subprocess.run(
+                ["osascript", "-l", "JavaScript", "-e", jxa_move, target_name, str(dest_dir)],
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+            if run_res.returncode == 0 and run_res.stdout.strip():
+                out = json.loads(run_res.stdout.strip())
+                if out.get("ok"):
+                    final_dest = out.get("dest", str(dest_dir))
+                    return {
+                        "ok": True,
+                        "item_name": target_name,
+                        "method": "move_to_dir",
+                        "dest": final_dest,
+                        "reply": (
+                            f"♻️ ĐÃ LẤY FILE TỪ THÙNG RÁC RA THƯ MỤC ĐÍCH:\n"
+                            f"• Tên mục: {target_name} ({size_human})\n"
+                            f"• Nơi đến: `{final_dest}`"
+                        ),
+                    }
+                return {"ok": False, "error": f"❌ Không thể chuyển '{target_name}' từ Thùng rác: {out.get('error')}"}
+            return {"ok": False, "error": f"❌ Lỗi thực thi chuyển từ Thùng rác: {run_res.stderr.strip()}"}
+        except Exception as e:
+            return {"ok": False, "error": f"❌ Lỗi khi lấy file từ Thùng rác: {e}"}
+
+    # Trường hợp mặc định (dest_dir is None): Đưa trở lại (Put Back) về đúng thư mục ban đầu
+    fallback_dir = str(Path.home() / "Desktop")
+    jxa_putback = r"""
+function run(argv) {
+    var targetName = argv[0].normalize("NFC");
+    var fallbackDir = argv[1];
+    var finder = Application("Finder");
+    var items = finder.trash.items();
+    var target = null;
+    for (var i = 0; i < items.length; i++) {
+        if (items[i].name().normalize("NFC") === targetName) {
+            target = items[i];
+            break;
+        }
+    }
+    if (!target) {
+        return JSON.stringify({ok: false, error: "NOT_FOUND"});
+    }
+    try {
+        finder.activate();
+        finder.reveal(target);
+        delay(0.5);
+        var se = Application("System Events");
+        var finderProc = se.processes.byName("Finder");
+        var fileMenu = finderProc.menuBars[0].menuBarItems[2].menus[0];
+        var mItems = fileMenu.menuItems();
+        var putBackItem = null;
+        for (var j = 0; j < mItems.length; j++) {
+            try {
+                var n = mItems[j].name();
+                if (n === "Đưa trở lại" || n === "Put Back" || n === "Đặt lại") {
+                    putBackItem = mItems[j];
+                    break;
+                }
+            } catch(e) {}
+        }
+        var closeTrashWin = function() {
+            try {
+                var wins = finder.finderWindows();
+                for (var w = 0; w < wins.length; w++) {
+                    var wn = wins[w].name();
+                    if (wn === "Thùng rác" || wn === "Trash") {
+                        wins[w].close();
+                    }
+                }
+            } catch(e) {}
+        };
+        if (putBackItem && putBackItem.enabled()) {
+            putBackItem.click();
+            delay(0.8);
+            closeTrashWin();
+            var afterItems = finder.trash.items();
+            var stillThere = false;
+            for (var k = 0; k < afterItems.length; k++) {
+                if (afterItems[k].name().normalize("NFC") === targetName) {
+                    stillThere = true;
+                    break;
+                }
+            }
+            if (!stillThere) {
+                return JSON.stringify({ok: true, method: "put_back"});
+            }
+        }
+        var moved = finder.move(target, {to: Path(fallbackDir), replacing: false});
+        closeTrashWin();
+        var finalPath = fallbackDir;
+        try {
+            var u = moved.url();
+            if (u) finalPath = decodeURIComponent(u.replace(/^file:\/\//, ""));
+        } catch(e) {}
+        return JSON.stringify({ok: true, method: "fallback_desktop", dest: finalPath});
+    } catch(e) {
+        return JSON.stringify({ok: false, error: String(e)});
+    }
+}
+"""
+    try:
+        run_res = subprocess.run(
+            ["osascript", "-l", "JavaScript", "-e", jxa_putback, target_name, fallback_dir],
+            capture_output=True,
+            text=True,
+            timeout=20,
+        )
+        if run_res.returncode == 0 and run_res.stdout.strip():
+            out = json.loads(run_res.stdout.strip())
+            if out.get("ok"):
+                method = out.get("method", "put_back")
+                if method == "put_back":
+                    restored_path = None
+                    try:
+                        md = subprocess.run(
+                            ["mdfind", f"kMDItemFSName == '{target_name}'"],
+                            capture_output=True,
+                            text=True,
+                            timeout=2,
+                        )
+                        if md.returncode == 0 and md.stdout.strip():
+                            for line in md.stdout.strip().splitlines():
+                                line = line.strip()
+                                if line and "/.Trash/" not in line:
+                                    restored_path = line
+                                    break
+                    except Exception:
+                        pass
+                    dest_label = f"`{restored_path}`" if restored_path else "Thư mục gốc ban đầu (Đưa trở lại / Put Back)"
+                    return {
+                        "ok": True,
+                        "item_name": target_name,
+                        "method": "put_back",
+                        "dest": restored_path or "Thư mục gốc ban đầu (Đưa trở lại / Put Back)",
+                        "reply": (
+                            f"♻️ ĐÃ KHÔI PHỤC VỀ THƯ MỤC BAN ĐẦU THÀNH CÔNG:\n"
+                            f"• Tên mục: {target_name} ({size_human})\n"
+                            f"• Vị trí hiện tại: {dest_label}"
+                        ),
+                    }
+                else:
+                    final_dest = out.get("dest", fallback_dir)
+                    return {
+                        "ok": True,
+                        "item_name": target_name,
+                        "method": "fallback_desktop",
+                        "dest": final_dest,
+                        "reply": (
+                            f"♻️ ĐÃ LẤY RA KHỎI THÙNG RÁC (Chuyển ra Desktop):\n"
+                            f"• Tên mục: {target_name} ({size_human})\n"
+                            f"• Vị trí hiện tại: `{final_dest}`\n"
+                            f"ℹ️ Thư mục gốc ban đầu không còn thông tin lưu vết nên Finder đã chuyển an toàn ra Desktop."
+                        ),
+                    }
+            return {"ok": False, "error": f"❌ Không thể khôi phục '{target_name}': {out.get('error')}"}
+        return {"ok": False, "error": f"❌ Lỗi hệ thống khi khôi phục '{target_name}': {run_res.stderr.strip()}"}
+    except Exception as e:
+        return {"ok": False, "error": f"❌ Lỗi khi khôi phục '{target_name}' từ Thùng rác: {e}"}
 
