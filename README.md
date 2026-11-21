@@ -2,11 +2,17 @@
   <img src="assets/logo.jpg" width="160" style="border-radius: 32px; box-shadow: 0 8px 24px rgba(0,0,0,0.15);" alt="MacFileBot Logo">
 </p>
 
-<h1 align="center">🎬 MAC FILE BOT - TRỢ LÝ ĐIỀU KHIỂN MAC QUA TELEGRAM</h1>
+<h1 align="center">🎬 MAC FILE BOT — TRỢ LÝ ĐIỀU KHIỂN MAC QUA TELEGRAM</h1>
 
 <p align="center">
-  <b>Trợ lý cá nhân thông minh dành cho Creators, Editors & Filmmakers</b><br>
-  Điều khiển máy Mac từ xa bằng tiếng Việt tự nhiên qua Telegram: Quản lý footage ổ cứng ngoài, kiểm tra dung lượng, tải lên Google Drive tự lấy link gửi khách, đặt lịch âm/dương công việc, và tự động gửi link qua Zalo.
+  <b>Trợ lý cá nhân thông minh dành cho Creators, Editors, Filmmakers & Người dùng macOS</b><br>
+  Chụp màn hình thực tế, điều khiển máy Mac từ xa bằng AI Vision, tìm & quản lý footage ổ cứng ngoài, upload Google Drive lấy link gửi Zalo, giải phóng dung lượng an toàn, mở app và khôi phục Thùng rác — tất cả chỉ bằng tiếng Việt tự nhiên ngay trên Telegram!
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Version-v1.7.1-34C759?style=for-the-badge" alt="Version v1.7.1">
+  <img src="https://img.shields.io/badge/macOS-Native%20App-000000?style=for-the-badge&logo=apple&logoColor=white" alt="macOS Native">
+  <img src="https://img.shields.io/badge/An%20to%C3%A0n-100%25%20No--Delete-FF3B30?style=for-the-badge" alt="100% No Delete">
 </p>
 
 <p align="center">
@@ -17,235 +23,189 @@
 
 ---
 
-## 🌟 TÍNH NĂNG NỔI BẬT
+## 🌟 10 TÍNH NĂNG NỔI BẬT
 
-1. 🔒 **An toàn tuyệt đối (100% NO DELETE):**  
-   Hệ thống khóa cứng vĩnh viễn các lệnh xoá (`rm`, `trash`, `unlink`). Bot tuyệt đối không bao giờ xoá file của bạn dưới bất kỳ hình thức nào.
-2. 🛡️ **Không bao giờ ghi đè (No Overwrite):**  
-   Khi sao chép/dời file trùng tên, bot tự động đổi tên thành `(copy 1)`, `(copy 2)` để bảo toàn 100% dữ liệu gốc.
-3. 🔍 **Tìm kiếm thông minh:**  
-   Ưu tiên quét nhanh các thư mục làm việc như `Desktop/SOURCE`, ổ cứng ngoài `FILM DATA`, và quét trực tiếp kho lưu trữ Google Drive.
-4. ☁️ **Upload Google Drive & Tự động lấy Link chia sẻ:**  
-   Chỉ cần nhắn *"Up file X lên drive"*, bot sẽ chép vào thư mục Drive, chờ đồng bộ xong và tự động gửi link chia sẻ trực tiếp về Telegram.
-5. 💬 **Tự động gửi Link Drive qua Zalo:**  
-   Chỉ cần nhắn *"gửi link X qua cho Hoàng Dựng"*, bot tìm đúng link trên Drive, soạn sẵn tin và hiện nút bấm trên Telegram để bạn duyệt gửi qua Zalo trong 1 giây.
-6. 🤖 **Tích hợp Trí tuệ nhân tạo (Gemini AI):**  
-   Hiểu ngôn ngữ giao tiếp tiếng Việt tự nhiên, không bắt buộc bạn phải nhớ cú pháp lệnh máy móc.
-7. 🔐 **Bảo mật chủ nhân duy nhất (Owner Lock):**  
-   Chỉ một mình tài khoản Telegram của bạn có quyền điều khiển. Bất kỳ người lạ nào nhắn vào bot đều bị từ chối 100%.
+1. 🔒 **Khoá cứng CẤM XOÁ FILE 100% & Không bao giờ ghi đè (No Overwrite):**  
+   Hệ thống chặn tuyệt đối mọi lệnh xoá dữ liệu (`rm`, `trash`, `unlink`). Khi sao chép/dời file trùng tên, bot tự động đổi tên thành `(copy 1)`, `(copy 2)` để bảo toàn 100% footage gốc.
+2. 📸 **Chụp ảnh màn hình thực tế & AI Vision đọc màn hình:**  
+   Nhắn *"chụp màn hình"*, *"chụp màn hình hd"* (ảnh gốc 5K/Retina không nén), hoặc *"chụp màn hình có lưới"* (lưới toạ độ `A1–H6`). Nhờ AI đọc tiến độ trên máy: *"xem màn hình premiere render tới đâu rồi"*.
+3. 🎛 **Điều khiển máy Mac từ xa ngay trên Telegram:**  
+   - **Click theo lưới & AI Vision Click:** Nhắn `click C3`, `double click D4`, `click phải B2` hoặc nhắn tự nhiên *"bấm vào nút Xuất video"* để Gemini Vision tự tìm toạ độ nút, bấm chuột và khoanh tròn đỏ xác nhận vị trí.  
+   - **Bàn phím tiếng Việt & Phím tắt:** Nhắn *"gõ Xin chào rồi enter"*, *"bấm space"*, *"bấm cmd+s"*, *"cuộn xuống"*, hoặc bấm thẳng trên **Bảng điều khiển 1 chạm**.  
+   - **Hệ thống & 60fps Remote:** Xem CPU/RAM/Pin/App đang chạy, chuyển/đóng app, tăng giảm âm lượng, khoá màn hình, và nút mở nhanh **RustDesk / AnyDesk** chụp ngay mã ID để điều khiển mượt 60fps.
+4. 🔍 **Tìm kiếm thông minh đa nguồn & Nhớ ngữ cảnh:**  
+   Quét đồng thời trên máy Mac (`Desktop/SOURCE`, `Downloads`, `Documents`), ổ cứng ngoài (`FILM DATA`…), kho **Google Drive** (kể cả mục *Được chia sẻ với tôi*) và cảnh báo ngay nếu file đang nằm trong **Thùng rác**. Hỗ trợ nói nối tiếp như *"gửi link đó cho Anh Nam"*.
+5. ☁️ **Upload Google Drive & Tự động lấy Link chia sẻ:**  
+   Nhắn *"up file X lên drive"*, bot tự chép vào thư mục Drive, theo dõi đồng bộ và gửi link chia sẻ trực tiếp về Telegram. Hỗ trợ dán trực tiếp URL thư mục Google Drive làm thư mục upload mặc định.
+6. 💬 **Tự động gửi Link Drive qua Zalo 1 chạm:**  
+   Chỉ cần nhắn *"gửi link 2510 qua cho Anh Nam"*, bot tìm đúng link Drive, soạn sẵn nội dung và hiện nút xác nhận trên Telegram để tự động gửi qua `Zalo.app` chính chủ.
+7. 🧹 **Xoá bản tải về giải phóng ổ cứng Mac an toàn:**  
+   Nhắn *"xoá bản tải về 2510"* (hoặc bật chế độ tự động): bot chỉ gỡ cache tải về trên máy Mac **khi đã kiểm tra xác nhận 100% file đồng bộ lên Google Drive thành công**, giữ nguyên file trên mây.
+8. 🚀 **Mở ứng dụng / phần mềm từ xa:**  
+   Nhắn *"mở premiere"*, *"bật capcut"*, *"mở zalo"*, *"bật rustdesk"* (hỗ trợ viết tắt `pr`, `pts`, `ae`, `fcp`, `lr`, `me`…) hoặc bấm nút trong menu Telegram.
+9. 🗑 **Kiểm tra & Khôi phục file trong Thùng rác (Put Back):**  
+   Xem dung lượng Thùng rác, tìm file lỡ xoá nhầm và nhắn *"khôi phục file X"*, *"chuyển file X trong thùng rác ra lại folder ban đầu"* (hoặc sang `Desktop`, `Downloads`…) bằng lệnh **Đưa trở lại** gốc của macOS Finder.
+10. 📅 **Đặt lịch Dương lịch / Âm lịch & Bảo mật chủ nhân (Owner Lock):**  
+    Ghi/xem lịch quay làm việc Dương lịch và Âm lịch Việt Nam; tích hợp **Gemini AI** hiểu câu nói tự nhiên & trò chuyện; chỉ tài khoản Telegram của chủ nhân (hoặc người được chủ nhân cấp quyền) mới điều khiển được bot.
 
 ---
 
 ## 📋 MỤC LỤC HƯỚNG DẪN
 
-0. [Yêu cầu quan trọng trước khi sử dụng (Google Drive & Chống Sleep)](#-2-yêu-cầu-quan-trọng-trước-khi-sử-dụng)
-1. [Hướng dẫn 1: Cách lấy Telegram Bot Token (1 phút)](#1-cách-lấy-telegram-bot-token-trong-1-phút)
-2. [Hướng dẫn 2: Cách lấy Google Gemini API Key miễn phí (1 phút)](#2-cách-lấy-gemini-api-key-miễn-phí)
-3. [Hướng dẫn 3: Cài đặt 1-Click trên máy Mac](#3-cài-đặt-1-click-trên-máy-mac)
-4. [Hướng dẫn 4: Cấp quyền gửi tin Zalo trên macOS](#4-cấp-quyền-gửi-tin-nhắn-zalo-trên-macos)
-5. [Cẩm nang câu lệnh mẫu thường dùng](#5-cẩm-nang-câu-lệnh-mẫu-thường-dùng)
-6. [Quản lý và Gỡ cài đặt](#6-quản-lý-và-gỡ-cài-đặt)
-7. [Cơ chế tự động cập nhật khi có bản mới](#7-cơ-chế-tự-động-cập-nhật-khi-có-bản-mới)
+0. [2 Yêu cầu quan trọng trước khi sử dụng (Google Drive & Chống Sleep)](#%EF%B8%8F-2-yêu-cầu-quan-trọng-trước-khi-sử-dụng)
+1. [Cách lấy Telegram Bot Token (1 phút)](#1-cách-lấy-telegram-bot-token-trong-1-phút)
+2. [Cách lấy Google Gemini API Key miễn phí (30 giây)](#2-cách-lấy-gemini-api-key-miễn-phí)
+3. [Cài đặt 1-Click trên máy Mac (.pkg) & Vượt Gatekeeper](#3-cài-đặt-1-click-bằng-gói-chuẩn-macos-pkg)
+4. [Cấp quyền Hệ thống macOS (Trợ năng & Ghi màn hình)](#4-cấp-quyền-hệ-thống-macos-trợ-năng--ghi-màn-hình)
+5. [Cẩm nang câu lệnh mẫu đầy đủ (v1.7.1)](#5-cẩm-nang-câu-lệnh-mẫu-thường-dùng)
+6. [Quản lý, Phân quyền & Gỡ cài đặt](#6-quản-lý-phân-quyền--gỡ-cài-đặt)
+7. [Cơ chế tự động cập nhật (Auto-Update)](#7-cơ-chế-tự-động-cập-nhật-khi-có-bản-mới)
 
 ---
 
 ## ⚠️ 2 YÊU CẦU QUAN TRỌNG TRƯỚC KHI SỬ DỤNG
 
-Để bot có thể hoạt động trơn tru 24/7 từ xa và thực hiện đầy đủ các tính năng tải file / lấy link Google Drive, máy Mac của bạn cần đáp ứng 2 điều kiện sau:
+### 1. ☁️ Cài đặt ứng dụng Google Drive for Desktop trên máy Mac
+Bot đồng bộ file và lấy link chia sẻ trực tiếp thông qua ứng dụng Google Drive chính thức dành cho macOS:
 
-### 1. ☁️ Bắt buộc cài đặt ứng dụng Google Drive trên máy Mac
-Bot quản lý và đồng bộ file trực tiếp thông qua ứng dụng Google Drive chính thức dành cho macOS (để lưu file vào đám mây và tự động lấy link chia sẻ cho khách).
-
-* **Link tải chính thức từ Google:**  
-  👉 **[Tải Google Drive cho máy tính (macOS)](https://www.google.com/drive/download/)**  
-  *(Tải về file `.dmg`, mở lên và kéo biểu tượng Google Drive vào Applications để cài đặt)*.
-* **Sau khi cài đặt:**
-  * Mở ứng dụng **Google Drive** và đăng nhập tài khoản Gmail/Google Workspace của bạn.
-  * Chọn chế độ đồng bộ (Stream files hoặc Mirror files). Ổ đĩa Google Drive sẽ xuất hiện trên máy Mac của bạn.
-  * **Mẹo mục "Được chia sẻ với tôi":** Khi thợ, đối tác hoặc khách hàng gửi link Google Drive cho bạn, bạn chỉ cần bấm mở link đó trên trình duyệt 1 lần là bot sẽ tự động quét và lấy link được bất kỳ lúc nào!
-
----
+* **Link tải chính thức:** 👉 **[Tải Google Drive cho máy tính (macOS)](https://www.google.com/drive/download/)**
+* Đăng nhập tài khoản Google của bạn và bật đồng bộ để ổ Google Drive xuất hiện trên máy Mac.
+* **Mẹo mục "Được chia sẻ với tôi":** Khi thợ hoặc khách gửi link Google Drive cho bạn, chỉ cần mở link đó 1 lần hoặc bấm **"Thêm lối tắt vào Drive"** là bot sẽ quét và lấy link được bất kỳ lúc nào.
 
 ### 2. ⚡ Cài đặt máy Mac luôn thức (Chống Sleep 24/7)
-Bot hoạt động như một máy chủ dịch vụ cá nhân chạy ngầm trên Mac. **Nếu máy Mac rơi vào trạng thái ngủ (Sleep), CPU và kết nối WiFi sẽ tạm ngắt**, dẫn đến việc khi bạn ở ngoài nhắn tin qua Telegram thì bot sẽ không nhận được lệnh ngay.
+Bot chạy ngầm ngay trên máy Mac của bạn. Nếu máy ngủ hoàn toàn (Sleep), WiFi sẽ ngắt kết nối Telegram:
 
-Bạn chỉ cần thiết lập để **màn hình vẫn tắt/khoá để tiết kiệm điện và bảo vệ màn hình, nhưng máy Mac vẫn chạy ngầm kết nối mạng**:
-
-#### Cách 1: Thiết lập trực tiếp trong Cài đặt hệ thống (Khuyên dùng - Không cần cài thêm app)
-* **Bước 1:** Mở **Cài đặt hệ thống (System Settings)** trên máy Mac.
-* **Bước 2:** Vào mục **Màn hình (Displays)** ➔ Bấm vào nút **Nâng cao... (Advanced...)** (nằm ở góc dưới cùng bên phải cửa sổ).
-* **Bước 3:** Bật công tắc: **"Ngăn chặn tự động chuyển sang chế độ ngủ khi màn hình tắt"** (*Prevent automatic sleeping when the display is off*).
-* **Bước 4 (Tiết kiệm điện/màn hình):** Vào mục **Màn hình khoá (Lock Screen)**:
-  * Mục *"Tắt màn hình khi không hoạt động"* (*Turn display off when inactive*): Đặt thời gian tuỳ ý (ví dụ: `15 phút` hoặc `30 phút`).
-  * 👉 **Kết quả:** Sau 15-30 phút không dùng, màn hình Mac sẽ tắt đen để nghỉ ngơi và bảo mật, nhưng bot Telegram và WiFi vẫn chạy ngầm 24/7 để bạn điều khiển từ xa bất kỳ lúc nào!
-* **Dành riêng cho MacBook:**
-  * Cắm dây sạc nguồn nếu muốn máy chạy liên tục khi bạn ra ngoài.
-  * Vào mục **Pin (Battery)** ➔ **Tuỳ chọn (Options)** ➔ Bật: **"Đánh thức khi có truy cập mạng"** (*Wake for network access*).
-
-#### Cách 2: Dùng ứng dụng giữ thức máy miễn phí 1-Click
-Nếu bạn thích có 1 nút bấm bật/tắt nhanh trên thanh Menu Bar:
-* Cài ứng dụng **Amphetamine** (Hoàn toàn miễn phí trên Mac App Store): Giúp giữ máy luôn thức theo ý muốn chỉ với 1 click.
-* Hoặc khi cần giữ thức nhanh từ dòng lệnh, bạn chỉ cần mở Terminal gõ: `caffeinate -d` là máy sẽ không bao giờ ngủ.
-
----
+* **Thiết lập chuẩn trên macOS (không cần cài thêm app):**
+  1. Mở **Cài đặt hệ thống (System Settings)** ➔ **Màn hình (Displays)** ➔ **Nâng cao… (Advanced…)**.
+  2. Bật **"Ngăn chặn tự động chuyển sang chế độ ngủ khi màn hình tắt"** (*Prevent automatic sleeping when the display is off*).
+  3. Vào **Màn hình khoá (Lock Screen)**, chỉnh *"Tắt màn hình khi không hoạt động"* (vd: `15 phút`). Màn hình vẫn tắt đen tiết kiệm điện & bảo mật, nhưng máy vẫn nhận lệnh Telegram 24/7.
+  4. *(Dành cho MacBook)* Vào **Pin (Battery)** ➔ **Tuỳ chọn (Options)** ➔ Bật **"Đánh thức khi có truy cập mạng"** (*Wake for network access*).
+* Hoặc dùng app miễn phí **Amphetamine** trên Mac App Store / chạy lệnh `caffeinate -d`.
 
 ---
 
 ## 1. CÁCH LẤY TELEGRAM BOT TOKEN (Trong 1 phút)
 
-Bot Token là "chìa khoá" để kết nối máy Mac với tài khoản Telegram riêng của bạn.
+Bot Token giúp kết nối máy Mac của bạn với con bot Telegram riêng tư của chính bạn:
 
-* **Bước 1:** Mở ứng dụng **Telegram** trên điện thoại hoặc máy tính.
-* **Bước 2:** Tìm kiếm tài khoản chính thức của Telegram có tên là: `@BotFather` (có dấu tích xanh ✅).
-* **Bước 3:** Bấm nút **Start** (hoặc gửi tin nhắn `/start`).
-* **Bước 4:** Gửi lệnh:  
-  ```text
-  /newbot
-  ```
-* **Bước 5:** BotFather sẽ hỏi tên hiển thị cho bot (Name):  
-  * Bạn nhập tên tuỳ thích, ví dụ: `Trợ Lý Mac Của Tôi` hoặc `Mac File Bot`.
-* **Bước 6:** BotFather sẽ hỏi Username cho bot (Username):  
-  * Username phải là chữ không dấu và **bắt buộc phải kết thúc bằng chữ `bot`**.  
-  * Ví dụ: `my_mac_studio_bot` hoặc `thienung_file_bot`.
-* **Bước 7:** BotFather sẽ gửi cho bạn một đoạn mã Token có dạng:  
-  ```text
-  1234567890:ABCdefGhIJKlmNoPQRstuVWXyz123456789
-  ```
-  👉 **Sao chép (Copy) toàn bộ chuỗi mã này** để dán vào trình cài đặt ở Bước 3.
+1. Mở **Telegram**, tìm tài khoản chính thức `@BotFather` (có dấu tích xanh).
+2. Bấm **Start** ➔ gửi lệnh `/newbot`.
+3. Đặt tên hiển thị tuỳ thích (ví dụ: `Trợ Lý Mac Của Tôi`).
+4. Đặt Username không dấu **kết thúc bằng chữ `bot`** (ví dụ: `nam_mac_studio_bot`).
+5. Copy chuỗi **Bot Token** mà `@BotFather` trả về (dạng `1234567890:ABCdef...`).
 
-> ⚠️ **Lưu ý bảo mật:** Giữ kín mã Token này, không gửi cho người lạ.
+> ⚠️ **Bảo mật:** Giữ kín Bot Token của riêng bạn, không chia sẻ cho người lạ.
 
 ---
 
 ## 2. CÁCH LẤY GEMINI API KEY MIỄN PHÍ
 
-Gemini AI giúp bot hiểu ngôn ngữ tự nhiên hàng ngày (dù bạn nói lẹo từ, dùng tiếng lóng hay trật tự từ đảo lộn). Google cung cấp gói miễn phí hoàn toàn.
+Gemini AI giúp bot hiểu mọi cách nói tự nhiên (nối tiếp ngữ cảnh, tiếng lóng, phương ngữ), đọc màn hình thực tế và thực hiện **AI Vision Click**. Google cung cấp gói miễn phí hoàn toàn:
 
-* **Bước 1:** Mở trình duyệt web và truy cập vào:  
-  👉 **https://aistudio.google.com/apikey**
-* **Bước 2:** Đăng nhập bằng tài khoản Google (Gmail) của bạn.
-* **Bước 3:** Bấm vào nút màu xanh: **Create API key** (hoặc *Tạo khoá API*).
-* **Bước 4:** Chọn project có sẵn hoặc bấm tạo project mới ➔ Bấm **Create key in new project**.
-* **Bước 5:** Bấm nút **Copy** để sao chép chuỗi mã API Key (thường bắt đầu bằng `AIzaSy...` hoặc `AQ...`).
+1. Truy cập: 👉 **https://aistudio.google.com/apikey**
+2. Đăng nhập bằng tài khoản Google (Gmail) cá nhân.
+3. Bấm **Create API key** ➔ chọn **Create key in new project**.
+4. Copy chuỗi API Key (`AIzaSy...`). *(Bạn có thể dán khi cài đặt hoặc nhắn thẳng Key vào chat Telegram với bot bất cứ lúc nào để kích hoạt!)*.
 
 ---
 
 ## 3. CÀI ĐẶT 1-CLICK BẰNG GÓI CHUẨN MACOS (.PKG)
 
-Sau khi đã có **Bot Token** (và Gemini API Key):
-
-1. Tải gói cài đặt:  
+1. Tải gói cài đặt mới nhất:  
    👉 [**MacFileBot_Installer.pkg** (Tải trực tiếp)](https://github.com/thienungmedia/MediaTeleBot/raw/main/MacFileBot_Installer.pkg)
-2. Bấm đúp chuột vào file **`MacFileBot_Installer.pkg`** ➔ Chọn **Tiếp tục** ➔ **Cài đặt** (nhập mật khẩu máy Mac nếu được hỏi).
-3. Sau khi cài đặt hoàn tất, hộp thoại cấu hình giao diện Apple sẽ tự động bật lên:
-   * **Dán Bot Token** bạn vừa lấy ở Bước 1 (có kèm nút *[Xem Hướng Dẫn]* trực quan) ➔ Bấm **Tiếp tục**.
-   * **Dán Gemini API Key** ở Bước 2 (hoặc bấm *Bỏ qua* nếu chưa có).
-   * **Dán LINK hoặc Nhập tên thư mục Google Drive mặc định** (Hỗ trợ cả link thư mục do chủ dự án chia sẻ quyền chỉnh sửa, ví dụ: `https://drive.google.com/drive/folders/...` hoặc `PRODUCTION`) ➔ Bấm **Tiếp tục**.
-4. Hệ thống sẽ tự động cài sâu vào macOS và đăng ký dịch vụ chạy ngầm (`com.macfilebot.telegrambot`).  
-   **Từ nay, mỗi khi máy Mac khởi động, bot sẽ tự động chạy ngầm 24/7 mà bạn không cần mở Terminal hay giữ cửa sổ nào!**
-5. **KÍCH HOẠT CHỦ NHÂN DUY NHẤT:**
-   * Bấm nút **"Mở Telegram Ngay"** trên màn hình cài đặt.
-   * Gửi tin nhắn:  
-     ```text
-     /start
-     ```
-   * Bot sẽ lập tức phản hồi: `✅ ĐÃ KẾT NỐI VỚI MÁY MAC CỦA BẠN!` và tự động khoá quyền điều khiển cho riêng tài khoản Telegram này.
-6. **Ứng dụng quản lý đi kèm:**
-   * Trong thư mục **Applications** (Launchpad) của máy sẽ có sẵn **`MacFileBot Manager.app`** để bạn kiểm tra trạng thái đang chạy, đổi thư mục Drive hoặc khởi động lại bot bất cứ lúc nào.
+2. **Cách mở vượt Gatekeeper (nếu macOS cảnh báo nhà phát triển chưa xác minh):**
+   * Bấm **Chuột phải** vào file `MacFileBot_Installer.pkg` ➔ chọn **Mở (Open)**.
+   * *(Hoặc nếu lỡ bấm đúp và bị chặn: mở **Cài đặt hệ thống → Quyền riêng tư & Bảo mật**, kéo xuống dưới bấm nút **Vẫn mở / Open Anyway**).*
+3. Chọn **Tiếp tục** ➔ **Cài đặt** (nhập mật khẩu máy Mac nếu được hỏi).
+4. Hộp thoại cấu hình tự bật lên:
+   * Dán **Telegram Bot Token**.
+   * Dán **Gemini API Key** miễn phí của bạn (hoặc bấm *Bỏ qua* rồi dán trực tiếp trên Telegram sau).
+   * Nhập tên thư mục hoặc dán **Link thư mục Google Drive mặc định** (nếu để trống sẽ dùng mặc định `MacFileBot Uploads`).
+5. Nhấn **Mở Telegram Ngay** và nhắn:
+   ```text
+   /start
+   ```
+   Bot sẽ xác nhận kết nối và khoá quyền điều khiển cho duy nhất tài khoản Telegram của bạn!
 
 ---
 
-## 4. CẤP QUYỀN GỬI TIN NHẮN ZALO TRÊN MACOS
+## 4. CẤP QUYỀN HỆ THỐNG MACOS (Trợ năng & Ghi màn hình)
 
-Tính năng gửi Zalo hoạt động bằng cách điều khiển ứng dụng [Zalo.app](file:///Applications/Zalo.app) chính chủ trên Mac (mô phỏng thao tác dán tin nhắn như người thật để bảo vệ an toàn 100% cho tài khoản Zalo của bạn, tránh bị khoá nick như các API lậu).
+Để máy Mac cho phép bot chụp ảnh màn hình, bấm chuột/phím, khôi phục Thùng rác và gửi Zalo từ xa, hãy bật 2 quyền sau trong **Cài đặt hệ thống (System Settings) ➔ Quyền riêng tư & Bảo mật (Privacy & Security)**:
 
-Để Mac cho phép bot gửi tin:
-1. Mở **Cài đặt hệ thống (System Settings)** trên máy Mac.
-2. Chọn **Quyền riêng tư & Bảo mật (Privacy & Security)** ➔ **Trợ năng (Accessibility)**.
-3. Bấm bật công tắc cho **Python** (hoặc `Terminal`).
-4. **Lưu ý:** Ứng dụng Zalo trên máy Mac cần đang mở và đã đăng nhập tài khoản của bạn.
+1. **Ghi màn hình (Screen Recording):**  
+   Bật công tắc cho **Python** (hoặc `Terminal` / `MacFileBot`) để sử dụng tính năng chụp ảnh màn hình & AI Vision. *(Nếu quên bật, khi bạn bấm chụp màn hình, bot cũng tự gửi nút mở thẳng trang cài đặt này!).*
+2. **Trợ năng (Accessibility):**  
+   Bật công tắc cho **Python** (hoặc `Terminal`) để bot hỗ trợ gửi tin qua `Zalo.app`, điều khiển bàn phím/chuột và khôi phục (*Put Back*) file từ Thùng rác. *(Lưu ý: `Zalo.app` trên máy Mac cần đang mở và đăng nhập sẵn để gửi tin Zalo).*
 
 ---
 
 ## 5. CẨM NANG CÂU LỆNH MẪU THƯỜNG DÙNG
 
-Bạn có thể nhắn tin cho Bot bằng tiếng Việt tự nhiên bất cứ lúc nào:
+Bạn chỉ cần nhắn tin bằng tiếng Việt tự nhiên hoặc bấm nút trên Menu `/start`:
 
-### 🔍 1. Tìm kiếm file / thư mục
-* `tìm thư mục 2510`
-* `tìm file test.mp4 trong ổ FILM DATA`
-* `tìm clip ofi ngoài desktop`
-* `tìm thư mục 2510 trong google drive` *(quét thẳng kho lưu trữ Drive)*
+### 📸 1. Chụp màn hình & Điều khiển máy Mac từ xa (v1.7)
+* `chụp màn hình` / `chụp màn hình hd` *(ảnh gốc nét cao không nén)*
+* `chụp màn hình có lưới` / `bảng điều khiển` *(hiện lưới toạ độ `A1–H6` kèm bảng nút bấm)*
+* `xem màn hình premiere render tới đâu rồi` *(AI Vision đọc và tóm tắt màn hình thực tế)*
+* `click C3` / `double click D4` / `click phải B2`
+* `bấm vào nút Xuất video` / `click vào Zalo` *(AI Vision tự tìm nút & bấm chính xác)*
+* `gõ Xin chào anh rồi enter` / `bấm space` / `bấm cmd+s` / `cuộn xuống`
+* `tình trạng máy` / `chuyển sang premiere` / `tắt app zalo`
+* `tăng âm lượng` / `giảm âm lượng` / `tắt tiếng` / `âm lượng 50%`
+* `khoá màn hình` / `đánh thức màn hình`
+* `điều khiển rustdesk` / `điều khiển anydesk` *(mở app & chụp ngay ảnh chứa ID để điều khiển 60fps)*
 
-### 📊 2. Kiểm tra dung lượng
-* `thư mục 2510 nặng bao nhiêu gb`
-* `kiểm tra dung lượng thư mục SOURCE`
-* `kiểm tra ổ đĩa` *(xem dung lượng trống các ổ cứng ngoài)*
+### 🔍 2. Tìm kiếm file / thư mục & kiểm tra dung lượng
+* `tìm thư mục 2510` / `tìm file demo.mp4 trong ổ FILM DATA`
+* `tìm thư mục 2510 trong google drive` / `tìm file flycam trong mục được chia sẻ`
+* `thư mục 2510 nặng bao nhiêu gb` / `kiểm tra ổ đĩa`
 
-### ☁️ 3. Upload lên Google Drive
-* `up file test.mp4 lên drive`
-* `up thư mục 2810 lên google drive cho tôi`  
-*(Bot sẽ tự động tải lên thư mục mặc định đã cài đặt, sau khi Drive đồng bộ xong sẽ tự động gửi link chia sẻ về Telegram cho bạn!)*
+### ☁️ 3. Upload Google Drive, Lấy link & Gửi Zalo
+* `up file demo.mp4 lên drive` / `up thư mục 2810 lên google drive`
+* `lấy link 2510` / `xin link thư mục 2810`
+* `gửi link 2510 cho Anh Nam qua zalo`
+* *(Liên kết ngữ cảnh)* Sau khi vừa tìm thấy thư mục: chỉ cần nhắn tiếp `gửi link đó qua cho Chị Linh`!
+* Đổi thư mục mặc định: `/setfolder https://drive.google.com/drive/folders/...` hoặc nhắn *"đổi thư mục mặc định thành PRODUCTION"*
 
-### 📁 4. Cài đặt & Đổi thư mục upload mặc định (Hỗ trợ DÁN LINK Drive)
-* **Dán trực tiếp link Google Drive:**
-  * `/setfolder https://drive.google.com/drive/folders/1xRaK_aEWV1D6H3YhalfzQ...`
-  * *(Hỗ trợ cả link thư mục được chia sẻ quyền chỉnh sửa từ chủ dự án/thợ)*.
-* **Hoặc nhập tên thư mục:**
-  * `/setfolder THIEN UNG PRODUCTION`
-  * Hoặc nhắn tự nhiên: *"đổi thư mục mặc định thành Fly Cam Ofi"*
-* **Xem thư mục đang cài đặt:**
-  * `/getfolder` hoặc nhắn: *"thư mục mặc định hiện tại là gì"*
-* **Hoặc bấm đúp chuột** vào file `DoiThuMucDrive.command` trong thư mục trợ lý để xem/đổi nhanh chỉ với 1 click!
+### 🧹 4. Xoá bản tải về giải phóng ổ Mac (An toàn 100%)
+* `xoá bản tải về 2510` *(chỉ gỡ file cache trên Mac khi Drive đã sync đủ 100% lên mây)*
+* `kiểm tra đồng bộ 2510` / `bật tự động xoá bản tải về`
 
-### 🔗 5. Lấy link Google Drive có sẵn
-* `lấy link 2510 huynh trung hiep`
-* `xin link thư mục 2810`
-* `lấy link flycam ofi` *(tự động tìm cả trong mục "Được chia sẻ với tôi")*
+### 🚀 5. Mở ứng dụng & Khôi phục Thùng rác
+* `mở premiere` / `bật capcut` / `mở photoshop` / `mở zalo` / `xem danh sách app`
+* `kiểm tra thùng rác` / `thùng rác nặng bao nhiêu` / `tìm 3010 trong thùng rác`
+* `khôi phục file ảnh 001` / `chuyển file 3010 trong thùng rác ra lại folder ban đầu` / `dời file ảnh màn hình trong thùng rác ra desktop`
 
-### 💬 6. Gửi link Drive qua Zalo
-* `gửi link 2510 huynh trung hiep qua cho Hoàng Dựng`
-* `gửi link 2810 cho Hoàng Dựng qua zalo`
-* `chia sẻ link 2510 huynh trung hiep qua cho anh Thăng`
-* `up file test.mp4 lên drive rồi gửi cho chị Hà qua zalo`  
-*(Bot sẽ soạn sẵn tin nhắn, hiện bản xem trước kèm nút bấm `[✅ Gửi Zalo cho ...]`. Bạn chỉ cần bấm nút xác nhận trên Telegram là máy Mac sẽ tự động gửi!)*
+### 📅 6. Lịch làm việc (Dương lịch & Âm lịch)
+* `note lịch 20/12 quay phóng sự cưới` / `note lịch 05/11 âm chụp lễ đính hôn`
+* `hôm nay có lịch gì` / `tuần này có lịch gì` / `ngày 20/12 có lịch gì`
 
-### 📂 7. Copy / Dời file trên máy Mac
-* `copy thư mục 2510 trong film data ra source ngoài desktop`
-* `chuyển clip ofi qua film data`
+### 📂 7. Copy / Dời file giữa các ổ cứng (Không ghi đè)
+* `copy thư mục 2510 trong film data ra desktop`
+* `chuyển thư mục 2510 qua film data`
 
 ---
 
-## 6. QUẢN LÝ VÀ GỠ CÀI ĐẶT
+## 6. QUẢN LÝ, PHÂN QUYỀN & GỠ CÀI ĐẶT
 
-Mọi thao tác quản lý đều có sẵn file bấm đúp chuột trong thư mục:
-
-* 🔄 **Khởi động lại bot:** Bấm đúp vào file `KhoiDongLai.command`
-* 📁 **Đổi thư mục Drive:** Bấm đúp vào file `DoiThuMucDrive.command`
-* 🗑️ **Gỡ bỏ dịch vụ:** Bấm đúp vào file `GoCaiDat.command` (Dừng chạy ngầm và xoá dịch vụ sạch sẽ).
+* **Phân quyền cho đồng đội / nhân viên:** Khi người khác nhắn `/start` vào bot của bạn, bot sẽ báo Telegram ID về máy bạn; nếu muốn cho phép họ cùng tra cứu/điều khiển, nhắn: `thêm thợ <Telegram_ID>`.
+* **Ứng dụng quản lý trên Mac:** Mở **`MacFileBot Manager.app`** trong `Applications` hoặc `Desktop` để xem trạng thái dịch vụ, đổi thư mục Drive mặc định hoặc khởi động lại nhanh.
+* **Các file lệnh bấm đúp (`.command`)** nằm tại `~/Library/Application Support/MacFileBot/`:
+  * `KhoiDongLai.command` — Khởi động lại dịch vụ bot.
+  * `DoiThuMucDrive.command` — Đổi thư mục Google Drive mặc định.
+  * `CapNhat.command` — Tải bản cập nhật mới nhất.
+  * `KiemTraLoi.command` — Chạy chế độ Live Debug xem log trực tiếp.
+  * `GoCaiDat.command` — Dừng dịch vụ ngầm và gỡ cài đặt hoàn toàn.
 
 ---
 
 ## 7. CƠ CHẾ TỰ ĐỘNG CẬP NHẬT KHI CÓ BẢN MỚI
 
-Hệ thống đã tích hợp sẵn cơ chế **Auto-Update** thông minh:
-
-### 👤 Dành cho người sử dụng:
-1. **Tự động thông báo qua Telegram:** Mỗi khi tác giả phát hành bản nâng cấp mới, bot sẽ tự động gửi tin nhắn về Telegram:  
-   `🔔 PHÁT HIỆN BẢN CẬP NHẬT MỚI: v1.1.0!`  
-   kèm nút bấm: `[🚀 Cập nhật lên v1.1.0]`. Bạn chỉ cần **bấm nút**, bot sẽ tự tải code mới và khởi động lại trong 2 giây!
-2. **Cập nhật chủ động:** Bạn có thể nhắn tin cho bot bất cứ lúc nào:  
-   * `/update` hoặc nhắn: *"cập nhật bot"*, *"kiểm tra cập nhật"*.
-3. **Hoặc bấm đúp chuột** vào file: `CapNhat.command` trong thư mục.
-4. **An toàn 100%:** Quá trình cập nhật chỉ thay thế các file mã nguồn, **tuyệt đối không chạm vào `config.json`** (giữ nguyên Bot Token, API Key và cấu hình của bạn).
+* Bot tự động kiểm tra bản mới mỗi 24 giờ và gửi thông báo kèm nút **`[🚀 Cập nhật lên v...]`** trên Telegram.
+* Bạn cũng có thể nhắn `/update` hoặc *"cập nhật bot"* bất cứ lúc nào.
+* Quá trình cập nhật chỉ làm mới mã nguồn, **giữ nguyên 100% file `config.json`** (Bot Token, Gemini Key và cấu hình riêng của bạn).
 
 ---
 
-### 👨‍💻 Dành cho Tác giả (Khi muốn phát hành bản mới cho tất cả người dùng):
-1. Đẩy mã nguồn mới lên repository GitHub (`https://github.com/thienungmedia/MediaTeleBot`).
-2. Trong file `version.json`, tăng số phiên bản (ví dụ từ `1.0.0` lên `1.1.0`) và viết ghi chú tính năng mới vào mục `release_notes`.
-3. Toàn bộ máy Mac của người dùng đang chạy bot sẽ tự động nhận được thông báo nâng cấp chỉ sau vài phút!
-
----
-
-Chúc bạn có trải nghiệm làm việc nhẹ nhàng, nhanh chóng và chuyên nghiệp cùng **Mac File Bot**!
+Nếu thấy công cụ hữu ích cho công việc quay dựng và sử dụng Mac hằng ngày, hãy ⭐ **Star repository** để ủng hộ dự án!

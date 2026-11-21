@@ -56,21 +56,6 @@ FALLBACK_MODELS = [
     "gemini-2.0-flash",
 ]
 
-# Built-in fallback key (XOR-encoded so public repo scanners never flag or revoke it)
-_BUILTIN_MASK = 0x5A
-_BUILTIN_BYTES = [
-    27, 11, 116, 27, 56, 98, 8, 20, 108, 17, 62, 108, 48, 2, 46, 24, 45, 30,
-    57, 8, 52, 15, 23, 10, 47, 53, 25, 48, 17, 52, 29, 61, 28, 12, 21, 110,
-    17, 106, 41, 108, 23, 45, 104, 107, 8, 15, 51, 11, 56, 16, 104, 107, 11,
-]
-
-
-def _get_builtin_key() -> str:
-    try:
-        return bytes(b ^ _BUILTIN_MASK for b in _BUILTIN_BYTES).decode("utf-8")
-    except Exception:
-        return ""
-
 
 # Lưu lịch sử hội thoại ngắn theo từng người dùng để hiểu ngữ cảnh nối tiếp
 CHAT_HISTORY: dict[int, list[dict]] = {}
@@ -223,9 +208,6 @@ def _get_keys_and_model() -> tuple[list[str], str]:
                 model = DEFAULT_MODEL
     except Exception:
         pass
-    builtin_k = _get_builtin_key()
-    if builtin_k and builtin_k not in keys:
-        keys.append(builtin_k)
     return keys, model
 
 
@@ -381,6 +363,14 @@ def _call_gemini_vision(image_path: str, prompt_text: str, max_tokens: int = 500
 
 def locate_ui_element_on_screen(image_path: str, target_desc: str) -> dict:
     """Dùng Gemini Vision tìm toạ độ (0..1000) của phần tử UI trên ảnh màn hình."""
+    if not _get_keys_and_model()[0]:
+        return {
+            "found": False,
+            "reason": (
+                "Chưa cài Gemini API Key miễn phí. "
+                "Lấy key tại https://aistudio.google.com/apikey rồi dán trực tiếp vào chat Telegram này để bật AI Vision!"
+            ),
+        }
     prompt = (
         "Bạn là hệ thống AI Computer Use chuyên xác định toạ độ trên ảnh màn hình macOS.\n"
         f"Hãy tìm phần tử giao diện khớp nhất với yêu cầu của người dùng: \"{target_desc}\".\n"
@@ -431,6 +421,11 @@ def locate_ui_element_on_screen(image_path: str, target_desc: str) -> dict:
 
 def analyze_screen_with_gemini(image_path: str, question: str) -> str | None:
     """Dùng Gemini Vision đọc và tóm tắt nội dung hiển thị trên màn hình theo câu hỏi."""
+    if not _get_keys_and_model()[0]:
+        return (
+            "💡 Chưa cài Gemini API Key miễn phí để AI đọc màn hình.\n"
+            "👉 Bạn lấy key tại https://aistudio.google.com/apikey rồi dán trực tiếp vào chat Telegram này để bật tính năng phân tích màn hình thông minh!"
+        )
     q = (question or "").strip() or "Màn hình máy Mac hiện đang hiển thị gì?"
     prompt = (
         "Bạn là trợ lý AI đang nhìn ảnh chụp màn hình máy Mac của người dùng.\n"

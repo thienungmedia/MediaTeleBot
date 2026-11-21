@@ -1,9 +1,9 @@
 ==================================================================
-🎬 HƯỚNG DẪN CÀI ĐẶT NHANH (MAC FILE BOT - BẢN NATIVE MACOS)
+🎬 HƯỚNG DẪN CÀI ĐẶT NHANH (MAC FILE BOT v1.7.1 - BẢN NATIVE MACOS)
 ==================================================================
 
 ⚠️ 2 ĐIỀU KIỆN QUAN TRỌNG TRƯỚC KHI DÙNG:
-   1. Cài ứng dụng Google Drive trên máy Mac:
+   1. Cài ứng dụng Google Drive for Desktop trên máy Mac:
       👉 Tải tại: https://www.google.com/drive/download/
       (Đăng nhập tài khoản Google của bạn sau khi cài).
    2. Chống máy ngủ (Sleep) để bot nhận lệnh 24/7 từ xa:
@@ -13,34 +13,40 @@
 
 ------------------------------------------------------------------
 1. CHUẨN BỊ TRƯỚC KHI CÀI:
-   • Mã Bot Token Telegram (Lấy miễn phí trong 30 giây bằng cách chat /newbot với @BotFather).
-   • Mã Gemini API Key (Tùy chọn, lấy tại: https://aistudio.google.com/apikey).
+   • Telegram Bot Token: Lấy miễn phí trong 30 giây bằng cách chat
+     /newbot với @BotFather trên Telegram.
+   • Gemini API Key (Khuyên dùng để bật AI trò chuyện & AI Vision Click):
+     Lấy miễn phí tại https://aistudio.google.com/apikey (hoặc dán
+     trực tiếp vào khung chat Telegram sau khi cài xong).
 
 ------------------------------------------------------------------
-2. CÀI ĐẶT 1-CLICK DẠNG APP:
-   • Bấm đúp vào ứng dụng: "Cài Đặt MacFileBot.app"
-     (Hoặc mở file "CaiDat.command" nếu thích giao diện dòng lệnh).
-   • Cửa sổ giao diện Mac hiện lên ➔ Dán Bot Token ➔ Bấm Tiếp tục.
-   • Hệ thống tự động cài sâu vào máy (~/Library/Application Support/MacFileBot)
-     và kích hoạt chạy ngầm native 24/7 (tự mở khi bật máy).
+2. CÀI ĐẶT 1-CLICK TRÊN MACOS:
+   • Tải file MacFileBot_Installer.pkg -> Chuột phải chọn Mở (Open)
+     nếu macOS hỏi Gatekeeper -> Tiếp tục -> Cài đặt.
+   • Hộp thoại cài đặt hiện lên ➔ Dán Bot Token & Gemini API Key
+     ➔ Nhập tên (hoặc link) thư mục Google Drive mặc định ➔ Tiếp tục.
+   • Bot sẽ cài vào ~/Library/Application Support/MacFileBot và tự động
+     chạy ngầm 24/7 mỗi khi bật máy.
 
 ------------------------------------------------------------------
-3. KÍCH HOẠT:
-   • Bấm nút "Mở Telegram Ngay" trên cửa sổ thông báo (hoặc tìm đúng tên bot).
-   • Bấm START (hoặc gửi /start).
-   • Bot sẽ chào bạn và nhận diện máy của bạn ngay lập tức!
+3. KÍCH HOẠT CHỦ NHÂN:
+   • Bấm "Mở Telegram Ngay" (hoặc tìm đúng username bot vừa tạo).
+   • Gửi /start -> Bot tự động khoá quyền điều khiển cho riêng bạn!
 
 ------------------------------------------------------------------
-4. QUẢN LÝ TIỆN LỢI VỚI "MacFileBot Manager.app":
-   • Bấm đúp vào "MacFileBot Manager.app" để xem trạng thái bot đang chạy,
-     đổi thư mục Google Drive upload, hoặc khởi động lại bot bất cứ lúc nào.
+4. CẤP 2 QUYỀN MACOS ĐỂ DÙNG ĐẦY ĐỦ TÍNH NĂNG:
+   Vào Cài đặt hệ thống ➔ Quyền riêng tư & Bảo mật:
+   • Ghi màn hình (Screen Recording): Bật cho Python / MacFileBot
+     (để chụp ảnh màn hình thực tế & dùng AI Vision Click).
+   • Trợ năng (Accessibility): Bật cho Python / Terminal
+     (để gõ phím, gửi tin qua Zalo.app và khôi phục Thùng rác).
 
 ------------------------------------------------------------------
-5. NẾU DÙNG TÍNH NĂNG GỬI ZALO TỰ ĐỘNG:
-   • Vào Cài đặt hệ thống ➔ Quyền riêng tư & Bảo mật ➔ Trợ năng (Accessibility)
-     ➔ Gạt bật cho Python.
-   • Đảm bảo ứng dụng Zalo trên máy Mac đang mở và đã đăng nhập.
+5. QUẢN LÝ TIỆN LỢI VỚI "MacFileBot Manager.app":
+   • Bấm đúp vào "MacFileBot Manager.app" (trong Applications/Desktop)
+     để kiểm tra trạng thái, đổi thư mục Drive hoặc khởi động lại bot.
 
 ==================================================================
-Chi tiết đầy đủ về mọi câu lệnh và tính năng: xem file README.md!
+Chi tiết câu lệnh (chụp màn hình, điều khiển máy, AI Vision,
+Google Drive, Zalo, Thùng rác, Đặt lịch...): xem file README.md!
 ==================================================================

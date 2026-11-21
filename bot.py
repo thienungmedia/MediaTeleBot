@@ -635,12 +635,15 @@ def handle_message(client: TelegramClient, cfg: dict, msg: dict) -> bool:
         welcome = (
             "✅ ĐÃ KẾT NỐI VỚI MÁY MAC CỦA BẠN!\n"
             "🔒 Chế độ bảo vệ: BẬT (CẤM XOÁ FILE 100%).\n\n"
-            "💬 BẠN CHỈ CẦN NHẮN TIN BẰNG TIẾNG VIỆT TỰ NHIÊN (không cần dùng lệnh /):\n"
-            "• \"chuyển cho tôi file cưới 2510 qua film data\"\n"
-            "• \"kiểm tra xem tổng thư mục 2810 nặng bao nhiêu\"\n"
-            "• \"up 2710 lên google drive cho tôi\"\n\n"
-            "Tôi (Antigravity) sẽ tự động tìm thư mục, kiểm tra dung lượng, sao chép/dời sang ổ cứng FILM DATA hoặc Google Drive và báo kết quả lại ngay tại đây!"
+            "💬 NHẮN TIẾNG VIỆT TỰ NHIÊN HOẶC BẤM NÚT BÊN DƯỚI:\n"
+            "• 📁 File & Drive: \"tìm dự án 2510\", \"up file lên drive\", \"xoá bản tải về 2510\"\n"
+            "• 💬 Gửi link Zalo: \"gửi link 2510 cho Anh Nam qua zalo\"\n"
+            "• 📸 Màn hình & Điều khiển: \"chụp màn hình\", \"bấm vào nút Xuất\", \"tình trạng máy\"\n"
+            "• 🚀 App & Thùng rác: \"mở premiere\", \"kiểm tra thùng rác\", \"khôi phục file X\"\n"
+            "• 📅 Lịch làm việc: \"note lịch 20/12 quay sự kiện\", \"tuần này có lịch gì\"\n"
         )
+        if not (cfg.get("gemini_api_key") or os.environ.get("GEMINI_API_KEY")):
+            welcome += "\n💡 Mẹo: Lấy Gemini API Key miễn phí tại https://aistudio.google.com/apikey rồi dán thẳng vào đây để mở khoá AI trò chuyện & AI Vision Click!"
         client.send_message(chat_id, welcome, reply_markup=build_home_keyboard())
         return False
 

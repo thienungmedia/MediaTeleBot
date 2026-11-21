@@ -52,7 +52,9 @@ PLIST_PATH = LAUNCH_AGENTS_DIR / f"{PLIST_NAME}.plist"
 REQUIRED_FILES = [
     "bot.py",
     "safe_fs.py",
+    "gdrive_offload.py",
     "nl_engine.py",
+    "mac_remote.py",
     "llm_intent.py",
     "zalo_sender.py",
     "updater.py",
@@ -228,10 +230,10 @@ def _check_running_process() -> tuple[bool, str]:
     return False, ""
 
 
-def install(bot_token: str, gemini_key: str = "", gdrive_folder: str = "PRODUCTION") -> dict:
+def install(bot_token: str, gemini_key: str = "", gdrive_folder: str = "MacFileBot Uploads") -> dict:
     bot_token = bot_token.strip()
     gemini_key = gemini_key.strip()
-    gdrive_folder = gdrive_folder.strip() or "PRODUCTION"
+    gdrive_folder = gdrive_folder.strip() or "MacFileBot Uploads"
 
     # 1. Kiểm tra Token
     token_check = verify_telegram_token(bot_token)
@@ -287,7 +289,7 @@ def install(bot_token: str, gemini_key: str = "", gdrive_folder: str = "PRODUCTI
         cfg["gemini_api_key"] = gemini_key
     elif "gemini_api_key" not in cfg:
         cfg["gemini_api_key"] = ""
-    cfg["gemini_model"] = cfg.get("gemini_model", "gemini-3.1-flash-lite")
+    cfg["gemini_model"] = cfg.get("gemini_model", "gemini-2.5-flash")
 
     # Nếu đổi sang Bot Token mới thì reset hoàn toàn owner_id và last_update_id
     if old_token != bot_token:

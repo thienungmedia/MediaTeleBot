@@ -8,7 +8,7 @@ Allowed operations:
 - Search files by name/extension (find)
 - Copy files/directories without overwriting existing files (cp)
 - Move files/directories safely without overwriting existing files (mv)
-- Upload to Google Drive (defaults to 'THIEN UNG PRODUCTION' folder) & auto-extract share links!
+- Upload to Google Drive (defaults to 'MacFileBot Uploads' folder) & auto-extract share links!
 
 Strictly prohibited:
 - Deleting any file or folder (rm, rmdir, unlink, trash)
@@ -169,12 +169,12 @@ def resolve_target_gdrive_folder(raw_input: str) -> dict:
 
 def get_default_gdrive_subfolder() -> str:
     cfg = _read_json(CONFIG_PATH)
-    return cfg.get("default_gdrive_folder") or "THIEN UNG PRODUCTION"
+    return cfg.get("default_gdrive_folder") or "MacFileBot Uploads"
 
 
 def get_default_gdrive_folder_info() -> dict:
     cfg = _read_json(CONFIG_PATH)
-    folder_name = cfg.get("default_gdrive_folder") or "THIEN UNG PRODUCTION"
+    folder_name = cfg.get("default_gdrive_folder") or "MacFileBot Uploads"
     folder_id = cfg.get("default_gdrive_folder_id")
     folder_url = cfg.get("default_gdrive_folder_url")
     is_shared = cfg.get("default_gdrive_is_shared", False)
@@ -1222,7 +1222,7 @@ def resolve_subfolder_fuzzy(root_dir: Path, subfolder: str) -> Path:
 
 def upload_to_google_drive(src_str: str, subfolder: str = "") -> dict:
     """
-    Copy a file or folder into Google Drive folder (defaults to THIEN UNG PRODUCTION)
+    Copy a file or folder into thư mục Google Drive mặc định (mặc định 'MacFileBot Uploads')
     so Google Drive.app syncs it to the cloud and auto-sends the share link.
     """
     gdrive_root = find_google_drive_root(auto_launch=True)
