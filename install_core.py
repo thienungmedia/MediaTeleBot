@@ -55,6 +55,7 @@ REQUIRED_FILES = [
     "gdrive_offload.py",
     "nl_engine.py",
     "mac_remote.py",
+    "gcal_bridge.py",
     "llm_intent.py",
     "zalo_sender.py",
     "updater.py",

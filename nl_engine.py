@@ -16,6 +16,7 @@ import shutil
 import time
 import unicodedata
 from pathlib import Path
+import gcal_bridge
 import mac_remote
 import safe_fs
 from safe_fs import (
@@ -2255,70 +2256,81 @@ def _build_gcal_template_url(summary: str, d_start, d_end_inclusive) -> str:
 
 
 def _sync_to_macos_calendar(summary: str, d_start, d_end_inclusive) -> str | None:
-    """
-    Create an all-day event in macOS native Calendar.app (Lịch).
-    If the user signed into their Google account in macOS Internet Accounts,
-    Calendar.app automatically syncs this event 2-way with Google Calendar!
-    Returns the calendar name if created, or None.
-    """
-    import subprocess
-    safe_summary = summary.replace("\\", "\\\\").replace('"', '\\"')
-    script = f'''
-    try
-        set startDate to current date
-        set time of startDate to 0
-        set day of startDate to 1
-        set year of startDate to {d_start.year}
-        set month of startDate to {d_start.month}
-        set day of startDate to {d_start.day}
+    """Wrapper tương thích ngược tạo sự kiện trên Calendar.app qua gcal_bridge."""
+    r = gcal_bridge.create_via_macos_calendar(summary, d_start, d_end_inclusive)
+    return r.get("calendar") if r.get("ok") else None
 
-        set endDate to current date
-        set time of endDate to 0
-        set day of endDate to 1
-        set year of endDate to {d_end_inclusive.year}
-        set month of endDate to {d_end_inclusive.month}
-        set day of endDate to {d_end_inclusive.day}
 
-        tell application "Calendar"
-            set targetCal to missing value
-            set calList to every calendar whose writable is true
-            repeat with c in calList
-                set cName to name of c
-                if cName contains "@" or cName contains "Google" or cName contains "Gmail" then
-                    set targetCal to c
-                    exit repeat
-                end if
-            end repeat
-            if targetCal is missing value then
-                repeat with c in calList
-                    set cName to name of c
-                    if cName contains "Lịch" or cName contains "Calendar" or cName contains "Work" or cName contains "Công việc" or cName contains "Home" or cName contains "Cá nhân" then
-                        set targetCal to c
-                        exit repeat
-                    end if
-                end repeat
-            end if
-            if targetCal is missing value and (count of calList) > 0 then
-                set targetCal to item 1 of calList
-            end if
-            if targetCal is not missing value then
-                tell targetCal
-                    make new event at end with properties {{summary:"{safe_summary}", start date:startDate, end date:endDate, allday event:true}}
-                end tell
-                return name of targetCal
-            end if
-        end tell
-    end try
-    return ""
-    '''
-    try:
-        res = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, timeout=8)
-        cal_name = (res.stdout or "").strip()
-        if res.returncode == 0 and cal_name:
-            return cal_name
-    except Exception:
-        pass
-    return None
+def _format_gcal_note_reply(
+    res: dict,
+    content: str,
+    event_summary: str,
+    d,
+    d_end,
+    when_label: str,
+    is_lunar: bool = False,
+    lunar_label: str = "",
+    year_note: str = "",
+) -> dict:
+    """Định dạng phản hồi đồng nhất cho cả Âm lịch & Dương lịch sau khi gọi gcal_bridge."""
+    if res.get("synced_google"):
+        method = res.get("method", "")
+        cal_name = res.get("calendar") or "Google Calendar"
+        if method == "antigravity_cli":
+            method_line = "• 🤖 Tự động ghi qua Google Calendar CLI"
+        elif method == "apps_script":
+            method_line = f"• ☁️ Tự động ghi trực tiếp qua Google Apps Script ({cal_name})"
+        else:
+            method_line = f"• 🔄 Tự động đồng bộ 2 chiều qua Lịch macOS (tài khoản Google: {cal_name})"
+
+        if is_lunar:
+            lines = [
+                "📅 ĐÃ TỰ ĐỘNG GHI LỊCH GOOGLE (ĐỔI TỪ ÂM LỊCH):",
+                f"• 🌙 Âm lịch: {lunar_label}",
+                f"• ☀️ Dương lịch: {when_label}{year_note}",
+                f"• 📝 Nội dung: {content}",
+                method_line,
+            ]
+        else:
+            lines = [
+                "📅 ĐÃ TỰ ĐỘNG GHI LỊCH GOOGLE:",
+                f"• Ngày: {when_label}",
+                f"• Nội dung: {content}",
+                method_line,
+            ]
+        if res.get("link"):
+            lines.append(f"🔗 {res['link']}")
+        return {"handled": True, "reply": "\n".join(lines)}
+
+    # Máy chưa bật đồng bộ Google trên Calendar.app và chưa dán Apps Script Webhook
+    gcal_url = _build_gcal_template_url(event_summary, d, d_end)
+    gcal_markup = {
+        "inline_keyboard": [
+            [{"text": "📅 Lưu vào Google Calendar (Web)", "url": gcal_url}],
+            [{"text": "⚡ Bật tự động lưu Google Calendar (không cần bấm)", "callback_data": "gcal_setup_guide"}],
+        ]
+    }
+    if res.get("calendar"):
+        mac_note = f"\n• 🖥 Đã ghi vào Lịch nội bộ trên máy Mac ({res['calendar']}), chưa có tài khoản Google."
+    else:
+        mac_note = "\n• 💾 Đã lưu tạm vào lịch nội bộ của bot trên máy Mac."
+
+    if is_lunar:
+        reply = (
+            f"📅 ĐÃ LƯU LỊCH TẠM (ĐỔI TỪ ÂM LỊCH):\n"
+            f"• 🌙 Âm lịch: {lunar_label}\n"
+            f"• ☀️ Dương lịch: {when_label}{year_note}\n"
+            f"• 📝 Nội dung: {content}{mac_note}\n\n"
+            f"👇 Bạn có thể bấm lưu nhanh trên web, hoặc bấm *⚡ Bật tự động* để từ sau bot tự đẩy thẳng lên Google Calendar:"
+        )
+    else:
+        reply = (
+            f"📅 ĐÃ LƯU LỊCH TẠM:\n"
+            f"• Ngày: {when_label}\n"
+            f"• Nội dung: {content}{mac_note}\n\n"
+            f"👇 Bạn có thể bấm lưu nhanh trên web, hoặc bấm *⚡ Bật tự động* để từ sau bot tự đẩy thẳng lên Google Calendar:"
+        )
+    return {"handled": True, "reply": reply, "reply_markup": gcal_markup}
 
 
 def _try_note_calendar(t: str) -> dict | None:
@@ -2356,45 +2368,20 @@ def _try_note_calendar(t: str) -> dict | None:
         event_summary = f"{content} (Âm lịch: {l_label})"
         when_solar = d.strftime('%d/%m/%Y') if d == d_end else f"{d.strftime('%d/%m/%Y')} → {d_end.strftime('%d/%m/%Y')}"
         year_note = " (Năm sau)" if d.year > datetime.date.today().year else ""
-        gcal_url = _build_gcal_template_url(event_summary, d, d_end)
-        gcal_markup = {"inline_keyboard": [[{"text": "📅 Lưu vào Google Calendar (1 chạm)", "url": gcal_url}]]}
 
         _save_local_calendar_event(event_summary, start, end)
-
-        if Path(GCALENDAR_BIN).exists():
-            try:
-                res = subprocess.run(
-                    [GCALENDAR_BIN, "mutate", "create", "--summary", event_summary, "--start", start, "--end", end, "--all-day"],
-                    capture_output=True, text=True, timeout=60,
-                )
-                out = (res.stdout or "") + (res.stderr or "")
-                if res.returncode == 0:
-                    link_m = re.search(r"Link:\s*(\S+)", out)
-                    reply = (
-                        f"📅 ĐÃ NOTE LỊCH GOOGLE (TỰ ĐỘNG ĐỔI TỪ ÂM LỊCH):\n"
-                        f"• 🌙 Âm lịch: {l_label}\n"
-                        f"• ☀️ Dương lịch: {when_solar}{year_note}\n"
-                        f"• 📝 Nội dung: {content}"
-                    )
-                    if link_m:
-                        reply += f"\n🔗 {link_m.group(1)}"
-                    return {"handled": True, "reply": reply}
-            except Exception:
-                pass
-
-        mac_cal = _sync_to_macos_calendar(event_summary, d, d_end)
-        mac_note = f"\n• 🖥 Đã tự động ghi vào ứng dụng Lịch ({mac_cal}) trên máy Mac." if mac_cal else ""
-        return {
-            "handled": True,
-            "reply": (
-                f"📅 ĐÃ LƯU LỊCH (TỰ ĐỘNG ĐỔI TỪ ÂM LỊCH):\n"
-                f"• 🌙 Âm lịch: {l_label}\n"
-                f"• ☀️ Dương lịch: {when_solar}{year_note}\n"
-                f"• 📝 Nội dung: {content}{mac_note}\n\n"
-                f"👇 Bấm nút bên dưới để mở & lưu thẳng vào Google Calendar:"
-            ),
-            "reply_markup": gcal_markup,
-        }
+        res = gcal_bridge.create_google_calendar_event(event_summary, d, d_end, gcalendar_bin=GCALENDAR_BIN)
+        return _format_gcal_note_reply(
+            res=res,
+            content=content,
+            event_summary=event_summary,
+            d=d,
+            d_end=d_end,
+            when_label=when_solar,
+            is_lunar=True,
+            lunar_label=l_label,
+            year_note=year_note,
+        )
 
     # 2. XỬ LÝ LỊCH DƯƠNG THÔNG THƯỜNG
     # Strip prefixes like "note lịch vào google calendar ngày ..."
@@ -2452,39 +2439,18 @@ def _try_note_calendar(t: str) -> dict | None:
     start = d.isoformat()
     end = (d_end + datetime.timedelta(days=1)).isoformat()
     when = d.strftime('%d/%m/%Y') if d == d_end else f"{d.strftime('%d/%m/%Y')} → {d_end.strftime('%d/%m/%Y')}"
-    gcal_url = _build_gcal_template_url(content, d, d_end)
-    gcal_markup = {"inline_keyboard": [[{"text": "📅 Lưu vào Google Calendar (1 chạm)", "url": gcal_url}]]}
 
     _save_local_calendar_event(content, start, end)
-
-    if Path(GCALENDAR_BIN).exists():
-        try:
-            res = subprocess.run(
-                [GCALENDAR_BIN, "mutate", "create", "--summary", content, "--start", start, "--end", end, "--all-day"],
-                capture_output=True, text=True, timeout=60,
-            )
-            out = (res.stdout or "") + (res.stderr or "")
-            if res.returncode == 0:
-                link_m = re.search(r"Link:\s*(\S+)", out)
-                reply = f"📅 ĐÃ NOTE LỊCH GOOGLE:\n• Ngày: {when}\n• Nội dung: {content}"
-                if link_m:
-                    reply += f"\n🔗 {link_m.group(1)}"
-                return {"handled": True, "reply": reply}
-        except Exception:
-            pass
-
-    mac_cal = _sync_to_macos_calendar(content, d, d_end)
-    mac_note = f"\n• 🖥 Đã tự động ghi vào ứng dụng Lịch ({mac_cal}) trên máy Mac." if mac_cal else ""
-    return {
-        "handled": True,
-        "reply": (
-            f"📅 ĐÃ LƯU LỊCH:\n"
-            f"• Ngày: {when}\n"
-            f"• Nội dung: {content}{mac_note}\n\n"
-            f"👇 Bấm nút bên dưới để mở & lưu thẳng vào Google Calendar:"
-        ),
-        "reply_markup": gcal_markup,
-    }
+    res = gcal_bridge.create_google_calendar_event(content, d, d_end, gcalendar_bin=GCALENDAR_BIN)
+    return _format_gcal_note_reply(
+        res=res,
+        content=content,
+        event_summary=content,
+        d=d,
+        d_end=d_end,
+        when_label=when,
+        is_lunar=False,
+    )
 
 
 def _fmt_event_time(ev: dict) -> tuple[str, str]:
@@ -2628,8 +2594,26 @@ def _try_calendar_query(t: str) -> dict | None:
                 events = _json.loads(res.stdout or "[]")
         except Exception:
             events = []
-    if not events:
-        events = _load_local_calendar_events(start, end)
+    if not events and gcal_bridge.get_webhook_url():
+        events = gcal_bridge.list_via_webhook(s_iso, e_iso)
+
+    # Gộp thêm các sự kiện local chưa có trên cloud (tránh trùng theo tiêu đề + ngày bắt đầu)
+    local_evs = _load_local_calendar_events(start, end)
+    if events and local_evs:
+        seen_keys = set()
+        for ev in events:
+            st = ev.get("start", {})
+            d_part = (st.get("date") or st.get("dateTime") or "")[:10]
+            seen_keys.add(((ev.get("summary") or "").strip().lower(), d_part))
+        for lev in local_evs:
+            lst = lev.get("start", {})
+            ld_part = (lst.get("date") or lst.get("dateTime") or "")[:10]
+            lk = ((lev.get("summary") or "").strip().lower(), ld_part)
+            if lk not in seen_keys:
+                events.append(lev)
+                seen_keys.add(lk)
+    elif not events:
+        events = local_evs
 
     events = [e for e in events if e.get("status") != "cancelled"]
     if not events:

@@ -22,6 +22,7 @@ import urllib.request
 import uuid
 from pathlib import Path
 
+import gcal_bridge
 import mac_remote
 import safe_fs
 from safe_fs import (
@@ -546,6 +547,40 @@ def format_dir_view(path_str: str, chat_id: int) -> tuple[str, dict]:
     return "\n".join(header), {"inline_keyboard": kb}
 
 
+def _send_gcal_setup_guide(client: TelegramClient, chat_id: int, include_status: bool = False) -> None:
+    """Hiển thị trạng thái & 2 cách bật tự động lưu Google Calendar không cần Antigravity."""
+    lines: list[str] = []
+    if include_status:
+        st = gcal_bridge.get_calendar_sync_status(nl_engine.GCALENDAR_BIN)
+        lines.append("📅 TRẠNG THÁI ĐỒNG BỘ GOOGLE CALENDAR:\n")
+        if st.get("has_webhook"):
+            lines.append("• ☁️ Google Apps Script Bridge: ✅ *ĐÃ KẾT NỐI* (Tự động cả GHI & ĐỌC trực tiếp)")
+        else:
+            lines.append("• ☁️ Google Apps Script Bridge: ⚪ Chưa cài")
+        if st.get("macos_google_cals"):
+            lines.append("• 🔄 Lịch Google trên macOS: ✅ *ĐÃ BẬT* (`" + "`, `".join(st["macos_google_cals"]) + "`)")
+        else:
+            lines.append("• 🔄 Lịch Google trên macOS: ⚪ Chưa bật đồng bộ")
+        if st.get("has_cli"):
+            lines.append("• 🤖 Antigravity gcalendar CLI: ✅ Đã cài")
+        lines.append("")
+
+    lines.extend([
+        "⚡ *2 CÁCH TỰ ĐỘNG GHI LỊCH GOOGLE 100% KHÔNG CẦN ANTIGRAVITY:*\n",
+        "1️⃣ **Cách 1 — Nhanh nhất (20 giây, 0 dòng code):**",
+        "   Mở *Cài đặt hệ thống → Tài khoản Internet → Google → Gạt BẬT mục Lịch (Calendars)*.",
+        "   Từ đó mỗi khi bạn nhắn `note lịch 20/12 ...`, bot tự ghi vào Lịch Mac và macOS tự đồng bộ 2 chiều lên Google Calendar ngay lập tức!\n",
+        "2️⃣ **Cách 2 — Dùng Google Apps Script (1 phút, Đọc & Ghi trực tiếp không cần Apple Calendar):**",
+        "   Bấm nút *Lấy mã Google Apps Script* bên dưới, deploy Web App tại `script.google.com` rồi dán đường dẫn `/exec` thẳng vào chat Telegram này.",
+    ])
+    kb = [
+        [{"text": "⚙️ Mở Cài đặt Tài khoản Google trên Mac", "callback_data": "gcal_open_mac_accounts"}],
+        [{"text": "📋 Lấy mã Google Apps Script", "callback_data": "gcal_show_script"}],
+        [{"text": "🏠 Về Menu chính", "callback_data": "home"}],
+    ]
+    client.send_message(chat_id, "\n".join(lines), reply_markup={"inline_keyboard": kb})
+
+
 def handle_message(client: TelegramClient, cfg: dict, msg: dict) -> bool:
     """
     Process an incoming Telegram text message.
@@ -685,6 +720,30 @@ def handle_message(client: TelegramClient, cfg: dict, msg: dict) -> bool:
             "✅ ĐÃ CẬP NHẬT MÃ GEMINI API KEY THÀNH CÔNG!\n"
             "🤖 Bây giờ tôi có thể hiểu mọi ngữ cảnh câu lệnh tự nhiên và trò chuyện mọi chủ đề cùng bạn."
         )
+        return False
+
+    # Kết nối trực tiếp Google Calendar qua Apps Script Webhook URL hoặc xem cài đặt /gcal
+    m_gcal_url = re.match(
+        r"^(?:/gcal\s+)?(https://script\.google\.com/(?:a/macros/[^/]+/)?macros/s/[A-Za-z0-9_\-]+/exec\S*)$",
+        text.strip(),
+        flags=re.IGNORECASE,
+    )
+    if m_gcal_url:
+        raw_url = m_gcal_url.group(1).strip()
+        client.send_message(chat_id, "⏳ Đang kiểm tra kết nối tới Google Apps Script của bạn...")
+        res = gcal_bridge.save_webhook_url(raw_url)
+        if res.get("ok"):
+            cfg["gcal_webhook_url"] = res["url"]
+            client.send_message(chat_id, res["reply"])
+        else:
+            client.send_message(chat_id, res.get("error", "❌ Không kết nối được Google Calendar."))
+        return False
+
+    if text.strip().lower() in (
+        "/gcal", "cài đặt lịch google", "cai dat lich google",
+        "kết nối lịch google", "ket noi lich google", "cài lịch google", "cai lich google"
+    ):
+        _send_gcal_setup_guide(client, chat_id, include_status=True)
         return False
 
     if text.startswith("/ls"):
@@ -1112,6 +1171,37 @@ def handle_callback(client: TelegramClient, cfg: dict, cb: dict) -> None:
             res.get("reply") or res.get("error", ""),
             reply_markup={"inline_keyboard": kb},
         )
+        return
+
+    if data == "gcal_setup_guide":
+        _send_gcal_setup_guide(client, chat_id, include_status=True)
+        return
+
+    if data == "gcal_open_mac_accounts":
+        res = gcal_bridge.open_macos_internet_accounts()
+        kb = [
+            [{"text": "📋 Lấy mã Google Apps Script", "callback_data": "gcal_show_script"}],
+            [{"text": "🏠 Về Menu chính", "callback_data": "home"}],
+        ]
+        client.send_message(
+            chat_id,
+            res.get("reply") or res.get("error", ""),
+            reply_markup={"inline_keyboard": kb},
+        )
+        return
+
+    if data == "gcal_show_script":
+        guide = (
+            "📋 CÁCH CÀI GOOGLE APPS SCRIPT (1 PHÚT — GHI & ĐỌC LỊCH TRỰC TIẾP):\n\n"
+            "1. Mở https://script.google.com → Bấm 'Dự án mới' (New project).\n"
+            "2. Xoá hết code mẫu và dán toàn bộ đoạn code ở tin nhắn ngay dưới vào.\n"
+            "3. Bấm 'Triển khai' (Deploy) → 'Tạo mục triển khai mới' (New deployment) → Loại: 'Ứng dụng web' (Web app):\n"
+            "   • Thực thi dưới danh nghĩa (Execute as): Tôi (Me)\n"
+            "   • Ai có quyền truy cập (Who has access): Bất kỳ ai (Anyone)\n"
+            "4. Bấm Triển khai → Cấp quyền Google Calendar → Copy đường dẫn Web app (/exec) và DÁN THẲNG VÀO CHAT NÀY là xong!"
+        )
+        client.send_message(chat_id, guide)
+        client.send_message(chat_id, gcal_bridge.APPS_SCRIPT_TEMPLATE)
         return
 
     if data.startswith("qcp:") or data.startswith("qmv:") or data.startswith("qgd:"):

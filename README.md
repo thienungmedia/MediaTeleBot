@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-v1.7.1-34C759?style=for-the-badge" alt="Version v1.7.1">
+  <img src="https://img.shields.io/badge/Version-v1.7.2-34C759?style=for-the-badge" alt="Version v1.7.2">
   <img src="https://img.shields.io/badge/macOS-Native%20App-000000?style=for-the-badge&logo=apple&logoColor=white" alt="macOS Native">
   <img src="https://img.shields.io/badge/An%20to%C3%A0n-100%25%20No--Delete-FF3B30?style=for-the-badge" alt="100% No Delete">
 </p>
@@ -177,9 +177,12 @@ Bạn chỉ cần nhắn tin bằng tiếng Việt tự nhiên hoặc bấm nút
 * `kiểm tra thùng rác` / `thùng rác nặng bao nhiêu` / `tìm 3010 trong thùng rác`
 * `khôi phục file ảnh 001` / `chuyển file 3010 trong thùng rác ra lại folder ban đầu` / `dời file ảnh màn hình trong thùng rác ra desktop`
 
-### 📅 6. Lịch làm việc (Dương lịch & Âm lịch)
+### 📅 6. Lịch làm việc (Dương lịch & Âm lịch — Tự động 100% không cần cài thêm phần mềm)
 * `note lịch 20/12 quay phóng sự cưới` / `note lịch 05/11 âm chụp lễ đính hôn`
 * `hôm nay có lịch gì` / `tuần này có lịch gì` / `ngày 20/12 có lịch gì`
+* **Tự động ghi & xem Google Calendar (không cần cài Antigravity hay bấm xác nhận trên web):**
+  * **Cách 1 (20 giây, 0 dòng code):** Mở **Cài đặt hệ thống (System Settings) ➔ Tài khoản Internet (Internet Accounts) ➔ Google ➔ Gạt BẬT Lịch (Calendars)**. Bot sẽ tự ghi vào lịch Google trên Mac và macOS tự đồng bộ 2 chiều lên Google Calendar ngay lập tức.
+  * **Cách 2 (1 phút — Đọc & Ghi trực tiếp Google Calendar API):** Nhắn `/gcal` trên Telegram để lấy đoạn **Google Apps Script**, deploy thành Web App tại `script.google.com` rồi dán đường dẫn `/exec` thẳng vào chat Telegram.
 
 ### 📂 7. Copy / Dời file giữa các ổ cứng (Không ghi đè)
 * `copy thư mục 2510 trong film data ra desktop`
