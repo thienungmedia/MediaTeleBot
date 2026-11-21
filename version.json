@@ -1,6 +1,6 @@
 {
-  "version": "1.6.1",
-  "release_notes": "• Tính năng mới: Khôi phục file/thư mục từ Thùng rác (Trash) về lại đúng thư mục ban đầu (Đưa trở lại / Put Back):\n  - Nhắn tự nhiên: 'khôi phục <tên file>', 'chuyển file X trong thùng rác ra lại folder ban đầu', 'đưa X về chỗ cũ', 'lấy lại X từ thùng rác'...\n  - Hỗ trợ lấy từ Thùng rác sang một thư mục khác chỉ định: 'chuyển X từ thùng rác ra desktop' / 'qua film data'...\n  - Tích hợp nút bấm [♻️ Khôi phục: <tên file>] ngay dưới danh sách Thùng rác khi bấm [🗑 Thùng rác].\n• Kế thừa đầy đủ các tính năng v1.6.0: Mở ứng dụng từ xa (Premiere, CapCut, RustDesk, Zalo...) và kiểm tra/tìm kiếm file trong Thùng rác.",
+  "version": "1.6.2",
+  "release_notes": "• Khắc phục lỗi phân quyền (-5000) khi khôi phục hoặc dời file từ Thùng rác (Trash) ra Desktop / thư mục đích (đặc biệt với các file ảnh chụp màn hình macOS và file xoá từ Finder).\n• Đảm bảo cơ chế đưa file ra khỏi Thùng rác bằng lệnh hệ thống của Finder rồi dời an toàn sang đúng thư mục chỉ định.\n• Kế thừa đầy đủ các tính năng v1.6.1: Khôi phục về thư mục ban đầu (Đưa trở lại / Put Back), nút bấm [♻️ Khôi phục], mở ứng dụng từ xa và kiểm tra Thùng rác.",
   "files": {
     "bot.py": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/bot.py",
     "safe_fs.py": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/safe_fs.py",

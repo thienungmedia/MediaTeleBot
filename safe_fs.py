@@ -1574,6 +1574,54 @@ def get_trash_summary() -> dict:
     return {"ok": True, "reply": "\n".join(lines), "items": items}
 
 
+def _locate_restored_item(target_name: str, extra_dirs: list[str] | None = None) -> str | None:
+    """Tìm đường dẫn thực tế của file/thư mục vừa được khôi phục từ Thùng rác."""
+    target_nfc = unicodedata.normalize("NFC", target_name)
+    home = Path.home()
+    dirs_to_check: list[Path] = []
+    if extra_dirs:
+        for ed in extra_dirs:
+            if ed:
+                dirs_to_check.append(Path(ed).expanduser())
+    dirs_to_check.extend([home / "Desktop", home / "Downloads", home / "Documents", home])
+
+    seen_dirs: set[str] = set()
+    for d in dirs_to_check:
+        try:
+            if not d.is_dir():
+                continue
+            d_key = str(d.resolve())
+            if d_key in seen_dirs:
+                continue
+            seen_dirs.add(d_key)
+            for fname in os.listdir(d):
+                if unicodedata.normalize("NFC", fname) == target_nfc:
+                    cand = d / fname
+                    if cand.exists():
+                        return str(cand)
+        except OSError:
+            pass
+
+    try:
+        md = subprocess.run(
+            ["mdfind", "-name", target_name],
+            capture_output=True,
+            text=True,
+            timeout=3,
+        )
+        if md.returncode == 0 and md.stdout.strip():
+            for line in md.stdout.strip().splitlines():
+                line = line.strip()
+                if not line or "/.Trash/" in line:
+                    continue
+                p = Path(line)
+                if unicodedata.normalize("NFC", p.name) == target_nfc and p.exists():
+                    return str(p)
+    except Exception:
+        pass
+    return None
+
+
 def restore_from_trash(query: str, dest_dir: str | None = None) -> dict:
     """Khôi phục file/thư mục từ Thùng rác về lại thư mục ban đầu (Đưa trở lại / Put Back) hoặc chuyển ra thư mục chỉ định."""
     res = get_trash_items(query=query, limit=50)
@@ -1599,66 +1647,9 @@ def restore_from_trash(query: str, dest_dir: str | None = None) -> dict:
     target_name = target_item["name"]
     size_human = target_item.get("size_human", "0 B")
 
-    if dest_dir:
-        jxa_move = r"""
-function run(argv) {
-    var targetName = argv[0].normalize("NFC");
-    var destDir = argv[1];
-    var finder = Application("Finder");
-    var items = finder.trash.items();
-    var target = null;
-    for (var i = 0; i < items.length; i++) {
-        if (items[i].name().normalize("NFC") === targetName) {
-            target = items[i];
-            break;
-        }
-    }
-    if (!target) {
-        return JSON.stringify({ok: false, error: "NOT_FOUND"});
-    }
-    try {
-        var moved = finder.move(target, {to: Path(destDir), replacing: false});
-        var finalPath = destDir;
-        try {
-            var u = moved.url();
-            if (u) finalPath = decodeURIComponent(u.replace(/^file:\/\//, ""));
-        } catch(e) {}
-        return JSON.stringify({ok: true, method: "move_to_dir", dest: finalPath});
-    } catch(e) {
-        return JSON.stringify({ok: false, error: String(e)});
-    }
-}
-"""
-        try:
-            run_res = subprocess.run(
-                ["osascript", "-l", "JavaScript", "-e", jxa_move, target_name, str(dest_dir)],
-                capture_output=True,
-                text=True,
-                timeout=15,
-            )
-            if run_res.returncode == 0 and run_res.stdout.strip():
-                out = json.loads(run_res.stdout.strip())
-                if out.get("ok"):
-                    final_dest = out.get("dest", str(dest_dir))
-                    return {
-                        "ok": True,
-                        "item_name": target_name,
-                        "method": "move_to_dir",
-                        "dest": final_dest,
-                        "reply": (
-                            f"♻️ ĐÃ LẤY FILE TỪ THÙNG RÁC RA THƯ MỤC ĐÍCH:\n"
-                            f"• Tên mục: {target_name} ({size_human})\n"
-                            f"• Nơi đến: `{final_dest}`"
-                        ),
-                    }
-                return {"ok": False, "error": f"❌ Không thể chuyển '{target_name}' từ Thùng rác: {out.get('error')}"}
-            return {"ok": False, "error": f"❌ Lỗi thực thi chuyển từ Thùng rác: {run_res.stderr.strip()}"}
-        except Exception as e:
-            return {"ok": False, "error": f"❌ Lỗi khi lấy file từ Thùng rác: {e}"}
+    fallback_dir = str(dest_dir) if dest_dir else str(Path.home() / "Desktop")
 
-    # Trường hợp mặc định (dest_dir is None): Đưa trở lại (Put Back) về đúng thư mục ban đầu
-    fallback_dir = str(Path.home() / "Desktop")
-    jxa_putback = r"""
+    jxa_extract_from_trash = r"""
 function run(argv) {
     var targetName = argv[0].normalize("NFC");
     var fallbackDir = argv[1];
@@ -1674,59 +1665,79 @@ function run(argv) {
     if (!target) {
         return JSON.stringify({ok: false, error: "NOT_FOUND"});
     }
+
+    var closeTrashWin = function() {
+        try {
+            var wins = finder.finderWindows();
+            for (var w = 0; w < wins.length; w++) {
+                var wn = wins[w].name();
+                if (wn === "Thùng rác" || wn === "Trash") {
+                    wins[w].close();
+                }
+            }
+        } catch(e) {}
+    };
+
+    var isStillInTrash = function() {
+        try {
+            var cur = finder.trash.items();
+            for (var k = 0; k < cur.length; k++) {
+                if (cur[k].name().normalize("NFC") === targetName) {
+                    return true;
+                }
+            }
+        } catch(e) {}
+        return false;
+    };
+
     try {
-        finder.activate();
         finder.reveal(target);
-        delay(0.5);
+        finder.activate();
+        delay(0.6);
+
         var se = Application("System Events");
         var finderProc = se.processes.byName("Finder");
         var fileMenu = finderProc.menuBars[0].menuBarItems[2].menus[0];
-        var mItems = fileMenu.menuItems();
-        var putBackItem = null;
-        for (var j = 0; j < mItems.length; j++) {
-            try {
-                var n = mItems[j].name();
-                if (n === "Đưa trở lại" || n === "Put Back" || n === "Đặt lại") {
-                    putBackItem = mItems[j];
-                    break;
-                }
-            } catch(e) {}
-        }
-        var closeTrashWin = function() {
-            try {
-                var wins = finder.finderWindows();
-                for (var w = 0; w < wins.length; w++) {
-                    var wn = wins[w].name();
-                    if (wn === "Thùng rác" || wn === "Trash") {
-                        wins[w].close();
+
+        var findPutBack = function() {
+            var mItems = fileMenu.menuItems();
+            for (var j = 0; j < mItems.length; j++) {
+                try {
+                    var n = mItems[j].name();
+                    if (n === "Đưa trở lại" || n === "Put Back" || n === "Đặt lại") {
+                        return mItems[j];
                     }
-                }
-            } catch(e) {}
+                } catch(e) {}
+            }
+            return null;
         };
+
+        var putBackItem = findPutBack();
+        if (!putBackItem) {
+            delay(0.4);
+            putBackItem = findPutBack();
+        }
         if (putBackItem && putBackItem.enabled()) {
             putBackItem.click();
             delay(0.8);
             closeTrashWin();
-            var afterItems = finder.trash.items();
-            var stillThere = false;
-            for (var k = 0; k < afterItems.length; k++) {
-                if (afterItems[k].name().normalize("NFC") === targetName) {
-                    stillThere = true;
-                    break;
-                }
-            }
-            if (!stillThere) {
+            if (!isStillInTrash()) {
                 return JSON.stringify({ok: true, method: "put_back"});
             }
         }
-        var moved = finder.move(target, {to: Path(fallbackDir), replacing: false});
+
         closeTrashWin();
-        var finalPath = fallbackDir;
         try {
-            var u = moved.url();
-            if (u) finalPath = decodeURIComponent(u.replace(/^file:\/\//, ""));
-        } catch(e) {}
-        return JSON.stringify({ok: true, method: "fallback_desktop", dest: finalPath});
+            var moved = finder.move(target, {to: Path(fallbackDir), replacing: false});
+            var movedPath = fallbackDir;
+            try {
+                var u = moved.url();
+                if (u) movedPath = decodeURIComponent(u.replace(/^file:\/\//, ""));
+            } catch(e) {}
+            return JSON.stringify({ok: true, method: "direct_move", dest: movedPath});
+        } catch(moveErr) {
+            return JSON.stringify({ok: false, error: String(moveErr)});
+        }
     } catch(e) {
         return JSON.stringify({ok: false, error: String(e)});
     }
@@ -1734,32 +1745,48 @@ function run(argv) {
 """
     try:
         run_res = subprocess.run(
-            ["osascript", "-l", "JavaScript", "-e", jxa_putback, target_name, fallback_dir],
+            ["osascript", "-l", "JavaScript", "-e", jxa_extract_from_trash, target_name, fallback_dir],
             capture_output=True,
             text=True,
-            timeout=20,
+            timeout=25,
         )
         if run_res.returncode == 0 and run_res.stdout.strip():
             out = json.loads(run_res.stdout.strip())
             if out.get("ok"):
-                method = out.get("method", "put_back")
-                if method == "put_back":
-                    restored_path = None
-                    try:
-                        md = subprocess.run(
-                            ["mdfind", f"kMDItemFSName == '{target_name}'"],
-                            capture_output=True,
-                            text=True,
-                            timeout=2,
-                        )
-                        if md.returncode == 0 and md.stdout.strip():
-                            for line in md.stdout.strip().splitlines():
-                                line = line.strip()
-                                if line and "/.Trash/" not in line:
-                                    restored_path = line
-                                    break
-                    except Exception:
-                        pass
+                res_method = out.get("method", "put_back")
+                restored_path = _locate_restored_item(target_name, [str(dest_dir)] if dest_dir else None)
+                if not restored_path:
+                    time.sleep(0.5)
+                    restored_path = _locate_restored_item(target_name, [str(dest_dir)] if dest_dir else None)
+
+                if dest_dir:
+                    dest_p = Path(dest_dir).expanduser().resolve()
+                    if restored_path:
+                        restored_p = Path(restored_path).resolve()
+                        if restored_p.parent != dest_p:
+                            mv_res = safe_move(restored_path, str(dest_p))
+                            if mv_res.get("ok"):
+                                final_dest = mv_res.get("dst")
+                            else:
+                                return {"ok": False, "error": mv_res.get("error", "❌ Không thể dời file sau khi khôi phục.")}
+                        else:
+                            final_dest = str(restored_p)
+                    else:
+                        final_dest = str(dest_p / target_name)
+
+                    return {
+                        "ok": True,
+                        "item_name": target_name,
+                        "method": "move_to_dir",
+                        "dest": final_dest,
+                        "reply": (
+                            f"♻️ ĐÃ LẤY FILE TỪ THÙNG RÁC RA THƯ MỤC ĐÍCH:\n"
+                            f"• Tên mục: {target_name} ({size_human})\n"
+                            f"• Nơi đến: `{final_dest}`"
+                        ),
+                    }
+
+                if res_method == "put_back":
                     dest_label = f"`{restored_path}`" if restored_path else "Thư mục gốc ban đầu (Đưa trở lại / Put Back)"
                     return {
                         "ok": True,
@@ -1772,22 +1799,27 @@ function run(argv) {
                             f"• Vị trí hiện tại: {dest_label}"
                         ),
                     }
-                else:
-                    final_dest = out.get("dest", fallback_dir)
-                    return {
-                        "ok": True,
-                        "item_name": target_name,
-                        "method": "fallback_desktop",
-                        "dest": final_dest,
-                        "reply": (
-                            f"♻️ ĐÃ LẤY RA KHỎI THÙNG RÁC (Chuyển ra Desktop):\n"
-                            f"• Tên mục: {target_name} ({size_human})\n"
-                            f"• Vị trí hiện tại: `{final_dest}`\n"
-                            f"ℹ️ Thư mục gốc ban đầu không còn thông tin lưu vết nên Finder đã chuyển an toàn ra Desktop."
-                        ),
-                    }
-            return {"ok": False, "error": f"❌ Không thể khôi phục '{target_name}': {out.get('error')}"}
-        return {"ok": False, "error": f"❌ Lỗi hệ thống khi khôi phục '{target_name}': {run_res.stderr.strip()}"}
+
+                final_dest = restored_path or out.get("dest", fallback_dir)
+                return {
+                    "ok": True,
+                    "item_name": target_name,
+                    "method": "fallback_desktop",
+                    "dest": final_dest,
+                    "reply": (
+                        f"♻️ ĐÃ LẤY RA KHỎI THÙNG RÁC (Chuyển ra Desktop):\n"
+                        f"• Tên mục: {target_name} ({size_human})\n"
+                        f"• Vị trí hiện tại: `{final_dest}`\n"
+                        f"ℹ️ Thư mục gốc ban đầu không còn thông tin lưu vết nên Finder đã chuyển an toàn ra Desktop."
+                    ),
+                }
+
+            action_err = out.get("error", "Lỗi không xác định")
+            if dest_dir:
+                return {"ok": False, "error": f"❌ Không thể chuyển '{target_name}' từ Thùng rác: {action_err}"}
+            return {"ok": False, "error": f"❌ Không thể khôi phục '{target_name}': {action_err}"}
+        err_msg = run_res.stderr.strip() or run_res.stdout.strip()
+        return {"ok": False, "error": f"❌ Lỗi hệ thống khi khôi phục '{target_name}': {err_msg}"}
     except Exception as e:
         return {"ok": False, "error": f"❌ Lỗi khi khôi phục '{target_name}' từ Thùng rác: {e}"}
 
