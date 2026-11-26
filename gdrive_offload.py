@@ -24,7 +24,7 @@ from pathlib import Path
 
 import safe_fs
 
-BASE_DIR = Path(__file__).parent.resolve()
+from runtime import BASE_DIR, IS_MAC, write_private_json
 JOBS_PATH = BASE_DIR / "offload_jobs.json"
 SETTINGS_PATH = BASE_DIR / "offload_settings.json"
 
@@ -88,7 +88,7 @@ function run(argv) {
 # ---------------------------------------------------------------- settings
 def is_auto_offload_enabled() -> bool:
     data = safe_fs._read_json(SETTINGS_PATH)
-    return bool(data.get("auto_offload_after_upload", True))
+    return bool(data.get("auto_offload_after_upload", False))
 
 
 def set_auto_offload(enabled: bool) -> None:
@@ -99,22 +99,12 @@ def set_auto_offload(enabled: bool) -> None:
 
 # ---------------------------------------------------------------- helpers
 def _gdrive_mount_roots() -> list[Path]:
-    roots = []
-    cs = Path.home() / "Library" / "CloudStorage"
-    try:
-        if cs.exists():
-            for e in cs.iterdir():
-                if e.name.startswith("GoogleDrive") and e.is_dir():
-                    roots.append(e.resolve())
-    except OSError:
-        pass
-    try:
-        for e in Path("/Volumes").iterdir():
-            if "googledrive" in e.name.lower().replace(" ", ""):
-                roots.append(e.resolve())
-    except OSError:
-        pass
-    return roots
+    if not IS_MAC:
+        return []
+    selected = safe_fs.find_google_drive_root(auto_launch=False)
+    if selected is None:
+        return []
+    return [selected.resolve()]
 
 
 def is_inside_google_drive(path: str | Path) -> bool:
@@ -145,7 +135,7 @@ def _list_files(root: Path) -> list[Path]:
             if fp.is_symlink():
                 continue
             files.append(fp)
-    return files
+    return sorted(files)
 
 
 def _logical_and_local_bytes(files: list[Path]) -> tuple[int, int]:
@@ -200,6 +190,7 @@ def check_sync_status(path: str | Path, src_path: str | Path | None = None) -> d
         "logical_bytes": 0,
         "local_bytes": 0,
         "reasons": [],
+        "checked_files": [],
     }
     if not p.exists():
         info["reasons"].append("Đường dẫn không còn tồn tại.")
@@ -232,6 +223,7 @@ def check_sync_status(path: str | Path, src_path: str | Path | None = None) -> d
         )
         if good:
             uploaded += 1
+            info["checked_files"].append(str(f))
         else:
             if s.get("err") or s.get("fail"):
                 info["errors"].append(f"{f.name}: {s.get('err') or s.get('fail')}")
@@ -288,15 +280,18 @@ def offload_local_copy(path: str | Path, src_path: str | Path | None = None, req
     if require_stable:
         time.sleep(STABILITY_GAP_SEC)
         st2 = check_sync_status(path, src_path)
-        if not st2["ok_100"] or st2["total"] != st1["total"] or st2["logical_bytes"] != st1["logical_bytes"]:
+        if not st2["ok_100"] or st2["checked_files"] != st1["checked_files"] or st2["logical_bytes"] != st1["logical_bytes"]:
             return {"ok": False, "status": st2, "error": "Trạng thái đồng bộ chưa ổn định, sẽ kiểm tra lại sau."}
         st1 = st2
 
-    p = Path(path).expanduser().resolve()
-    files = _list_files(p)
+    files = [Path(name) for name in st1["checked_files"]]
+    if any(not is_inside_google_drive(f) for f in files):
+        return {"ok": False, "status": st1, "error": "Đường dẫn đã thay đổi, chưa gỡ bản tải về."}
     before_local = _logical_and_local_bytes(files)[1]
     results = _run_jxa("evict", [str(f) for f in files])
-    failed = [r for r in results if not r.get("evicted")]
+    results_by_path = {r.get("p"): r for r in results}
+    failed = [results_by_path.get(str(file), {"p": str(file), "error": "Không có phản hồi"}) for file in files
+              if not results_by_path.get(str(file), {}).get("evicted")]
     time.sleep(2)
     after_local = _logical_and_local_bytes(files)[1]
     freed = max(0, before_local - after_local)
@@ -346,7 +341,7 @@ def _load_jobs() -> list[dict]:
 
 def _save_jobs(jobs: list[dict]) -> None:
     try:
-        JOBS_PATH.write_text(json.dumps(jobs, indent=2, ensure_ascii=False), encoding="utf-8")
+        write_private_json(JOBS_PATH, jobs)
     except Exception:
         pass
 

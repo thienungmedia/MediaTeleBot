@@ -15,6 +15,7 @@ Strictly prohibited:
 - Overwriting any existing file at destination
 """
 
+import errno
 import json
 import os
 import re
@@ -23,39 +24,15 @@ import sqlite3
 import subprocess
 import threading
 import time
+from itertools import count
 import unicodedata
 import urllib.request
-import ssl
 from pathlib import Path
+
+from runtime import open_https as _urlopen_robust
 from datetime import datetime
 
-def _get_ssl_context():
-    try:
-        ctx = ssl.create_default_context()
-        if os.path.exists("/etc/ssl/cert.pem"):
-            ctx.load_verify_locations("/etc/ssl/cert.pem")
-        return ctx
-    except Exception:
-        pass
-    try:
-        return ssl._create_unverified_context()
-    except Exception:
-        return None
-
-def _urlopen_robust(req, timeout=15):
-    ctx = _get_ssl_context()
-    try:
-        if ctx:
-            return urllib.request.urlopen(req, context=ctx, timeout=timeout)
-        return urllib.request.urlopen(req, timeout=timeout)
-    except Exception as e:
-        if "CERTIFICATE_VERIFY_FAILED" in str(e) or "certificate verify failed" in str(e):
-            unverified = ssl._create_unverified_context()
-            return urllib.request.urlopen(req, context=unverified, timeout=timeout)
-        raise
-
-BASE_DIR = Path(__file__).parent.resolve()
-CONFIG_PATH = BASE_DIR / "config.json"
+from runtime import BASE_DIR, CONFIG_PATH, IS_MAC, IS_WINDOWS, edit_config, mounted_roots, write_private_json
 
 
 def _read_json(path: Path) -> dict:
@@ -66,7 +43,7 @@ def _read_json(path: Path) -> dict:
 
 
 def _write_json(path: Path, data: dict) -> None:
-    path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    write_private_json(path, data)
 
 
 def extract_gdrive_id_from_url(url_or_text: str) -> str | None:
@@ -203,26 +180,20 @@ def set_default_gdrive_folder(raw_input: str) -> dict:
     folder_url = info.get("url")
     is_shared = info.get("is_shared", False)
 
-    cfg = _read_json(CONFIG_PATH)
-    cfg["default_gdrive_folder"] = folder_name
-    if cloud_id:
-        cfg["default_gdrive_folder_id"] = cloud_id
-    if folder_url:
-        cfg["default_gdrive_folder_url"] = folder_url
-    cfg["default_gdrive_is_shared"] = is_shared
-    _write_json(CONFIG_PATH, cfg)
+    if not folder_name.strip() or folder_name.strip() in (".", "..") or any(c in folder_name for c in "/\\"):
+        return {"ok": False, "error": "Hãy dùng tên một thư mục hoặc URL Google Drive hợp lệ."}
 
-    global DEFAULT_GDRIVE_SUBFOLDER
-    DEFAULT_GDRIVE_SUBFOLDER = folder_name
+    edit_config(lambda cfg: cfg.update(
+        default_gdrive_folder=folder_name, default_gdrive_folder_id=cloud_id,
+        default_gdrive_folder_url=folder_url, default_gdrive_is_shared=is_shared,
+    ), CONFIG_PATH)
 
     gdrive_root = find_google_drive_root(auto_launch=True)
     local_path = None
-    if gdrive_root:
-        local_path = resolve_subfolder_fuzzy(gdrive_root, folder_name)
-        try:
-            local_path.mkdir(parents=True, exist_ok=True)
-        except OSError:
-            pass
+    if gdrive_root and not cloud_id:
+        candidate = (gdrive_root / folder_name).resolve()
+        if candidate.is_relative_to(gdrive_root.resolve()):
+            local_path = candidate
 
     return {
         "ok": True,
@@ -232,9 +203,6 @@ def set_default_gdrive_folder(raw_input: str) -> dict:
         "is_shared": is_shared,
         "local_path": str(local_path) if local_path else None,
     }
-
-
-DEFAULT_GDRIVE_SUBFOLDER = get_default_gdrive_subfolder()
 
 
 def strip_accents(s: str) -> str:
@@ -255,33 +223,17 @@ def format_size(num_bytes: int) -> str:
     return f"{num_bytes:.1f} PB"
 
 
-def get_unique_destination(dst_path: Path) -> Path:
-    """
-    Ensure we NEVER overwrite an existing file or folder.
-    If dst_path exists, append ' (copy 1)', ' (copy 2)', etc.
-    """
-    if not dst_path.exists():
-        return dst_path
-    stem = dst_path.stem
-    suffix = dst_path.suffix
-    parent = dst_path.parent
-    counter = 1
-    while True:
-        candidate = parent / f"{stem} (copy {counter}){suffix}"
-        if not candidate.exists():
-            return candidate
-        counter += 1
-
-
-def send_telegram_notification(text: str, reply_markup: dict | None = None) -> None:
+def send_telegram_notification(text: str, reply_markup: dict | None = None, *, owner: int | None = None, expected_token: str | None = None) -> None:
     """Send a message directly to the owner's Telegram chat using config.json."""
     try:
         if not CONFIG_PATH.exists():
             return
         cfg = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
         token = cfg.get("bot_token")
-        chat_id = cfg.get("chat_id")
-        if not token or not chat_id:
+        chat_id = cfg.get("owner_id")
+        if not token or type(chat_id) is not int or chat_id <= 0:
+            return
+        if expected_token is not None and (expected_token != token or owner != chat_id):
             return
         url = f"https://api.telegram.org/bot{token}/sendMessage"
         payload = {"chat_id": chat_id, "text": text[:4000]}
@@ -297,7 +249,6 @@ def send_telegram_notification(text: str, reply_markup: dict | None = None) -> N
 
 # ---------- Zalo: trạng thái chờ xác nhận (lưu file để không mất khi bot nạp lại code) ----------
 ZALO_PENDING_PATH = BASE_DIR / "zalo_pending.json"              # tin nhắn đã soạn, chờ bấm "Gửi"
-ZALO_AFTER_UPLOAD_PATH = BASE_DIR / "zalo_after_upload.json"    # "up xong thì gửi link cho ai"
 DEFAULT_ZALO_TEMPLATE = "{name}\n{url}"
 
 
@@ -367,6 +318,8 @@ def get_gdrive_cloud_id_from_xattr(path: Path) -> str | None:
     (com.google.drivefs.item-id#S). Works without Full Disk Access!
     """
     global _LIBC
+    if not IS_MAC:
+        return None
     try:
         if _LIBC is None:
             import ctypes
@@ -431,7 +384,7 @@ def _query_gdrive_from_filesystem(
     q_tokens = [w for w in re.split(r"[^a-z0-9]+", q_norm) if w]
     q_compact = "".join(re.findall(r"[a-z0-9]+", q_norm))
     p_norm = strip_accents(parent_hint.strip()) if parent_hint else None
-    def_sub_norm = strip_accents(DEFAULT_GDRIVE_SUBFOLDER)
+    def_sub_norm = strip_accents(get_default_gdrive_subfolder())
 
     tier1_exact_in_parent = []
     tier2_exact_any = []
@@ -727,7 +680,7 @@ def query_gdrive_items(item_query: str, parent_hint: str | None = None, prefer_s
                 if prefer_shared:
                     in_target_parent = is_shared
                 else:
-                    in_target_parent = (strip_accents(DEFAULT_GDRIVE_SUBFOLDER) in parent_title_norm)
+                    in_target_parent = (strip_accents(get_default_gdrive_subfolder()) in parent_title_norm)
 
             is_synced = (not is_local_only) and (not str(effective_id).startswith("local_"))
             item_info = {
@@ -782,97 +735,53 @@ def query_gdrive_items(item_query: str, parent_hint: str | None = None, prefer_s
     return combined
 
 
-def _wait_and_notify_gdrive_link(dst_path: Path, src_path: Path | None = None) -> None:
-    """
-    Background worker that waits for Google Drive for Desktop to finish syncing dst_path
-    and automatically sends the shareable Google Drive link to Telegram.
-    Also schedules automatic 'Xoá bản tải về' when syncing reaches 100% to save Mac disk space.
-    """
-    item_name = dst_path.name
-    parent_name = dst_path.parent.name
-    # Poll for up to 30 minutes (for large video files)
-    start_time = time.time()
-    notified_uploading = False
-
-    while time.time() - start_time < 1800:
-        time.sleep(2.5)
-        matches = query_gdrive_items(item_name, parent_hint=parent_name)
-        exact = [m for m in matches if m["name"].lower() == item_name.lower()]
-        target = exact[0] if exact else (matches[0] if matches else None)
-
-        if target and target.get("is_synced") and target.get("url"):
-            lines = [
-                f"🔗 LINK GOOGLE DRIVE ĐỂ GỬI KHÁCH:",
-                f"• {'📁 Thư mục' if target['is_dir'] else '📄 File'}: {target['name']} ({target['size']})",
-                f"• Nằm trong: {target['parent_name']}",
-                f"\n👉 Link trực tiếp ({target['name']}):",
-                f"{target['url']}",
-            ]
-            if target.get("parent_url"):
-                lines.append(f"\n📂 Link cả thư mục {target['parent_name']}:\n{target['parent_url']}")
-
-            try:
-                import gdrive_offload
-                if gdrive_offload.is_auto_offload_enabled():
-                    lines.append(
-                        "\n🧹 Trạng thái ổ cứng: Đã hẹn tự động 'Xoá bản tải về' ngay khi Google Drive đồng bộ đủ 100% lên đám mây để giải phóng dung lượng máy Mac!"
-                    )
-                    gdrive_offload.schedule_offload_when_synced(dst_path, src_path, notify=False)
-            except Exception:
-                pass
-
-            send_telegram_notification("\n".join(lines))
-
-            # Nếu lệnh là "up xong gửi link cho ai đó qua Zalo": soạn sẵn tin và chờ bạn bấm xác nhận
-            after = _read_json(ZALO_AFTER_UPLOAD_PATH)
-            if after and time.time() - after.get("ts", 0) < 3600:
-                try:
-                    ZALO_AFTER_UPLOAD_PATH.unlink()
-                except OSError:
-                    pass
-                zalo_text = build_zalo_text(target["name"], target["url"])
-                set_zalo_pending(after["to"], zalo_text)
-                send_telegram_notification(
-                    f"📨 SẴN SÀNG GỬI ZALO cho: {after['to']}\n\n{zalo_text}\n\n👉 Bấm nút bên dưới để gửi:",
-                    reply_markup=zalo_confirm_markup(after["to"]),
-                )
+def _wait_and_notify_gdrive_link(dst_path: Path, src_path: Path) -> None:
+    """Get the exact cloud ID of this copy instead of searching by filename."""
+    cfg = _read_json(CONFIG_PATH)
+    owner = cfg.get("owner_id")
+    token = cfg.get("bot_token")
+    if not token or not owner:
+        return
+    source_id = get_gdrive_cloud_id_from_xattr(src_path)
+    for _ in range(360):
+        time.sleep(5)
+        current = _read_json(CONFIG_PATH)
+        if not dst_path.exists() or current.get("owner_id") != owner or current.get("bot_token") != token:
             return
-
-        if not notified_uploading and (time.time() - start_time > 8.0):
-            notified_uploading = True
-            send_telegram_notification(
-                f"⏳ Google Drive đang tải '{item_name}' lên đám mây. "
-                f"Ngay khi đồng bộ xong 100%, tôi sẽ tự động gửi Link Google Drive vào đây cho bạn!"
-            )
+        cloud_id = get_gdrive_cloud_id_from_xattr(dst_path)
+        if not cloud_id or cloud_id == source_id or cloud_id.startswith("local_") or not re.fullmatch(r"[A-Za-z0-9_-]+", cloud_id):
+            continue
+        url = format_gdrive_url(cloud_id, dst_path.is_dir())
+        send_telegram_notification(f"Link Google Drive của {dst_path.name}:\n{url}\nKiểm tra đồng bộ và quyền chia sẻ trên Drive trước khi gửi khách.", owner=owner, expected_token=token)
+        return
+    send_telegram_notification(f"Chưa lấy được link chính xác cho {dst_path.name}. Hãy dùng menu Google Drive trong Finder để lấy link.", owner=owner, expected_token=token)
 
 
 def list_drives() -> list[dict]:
     """List mounted drives/volumes in /Volumes and home directory status."""
-    volumes_dir = Path("/Volumes")
     drives = []
-    if volumes_dir.exists():
-        for item in sorted(volumes_dir.iterdir()):
-            try:
-                usage = shutil.disk_usage(item)
-                drives.append({
-                    "name": item.name,
-                    "path": str(item.resolve() if item.is_symlink() else item),
-                    "mount": str(item),
-                    "total": format_size(usage.total),
-                    "used": format_size(usage.used),
-                    "free": format_size(usage.free),
-                })
-            except PermissionError:
-                drives.append({
-                    "name": item.name,
-                    "path": str(item),
-                    "mount": str(item),
-                    "total": "N/A",
-                    "used": "N/A",
-                    "free": "Không có quyền đọc",
-                })
-            except OSError:
-                continue
+    for item in mounted_roots():
+        try:
+            usage = shutil.disk_usage(item)
+            drives.append({
+                "name": item.name or item.drive,
+                "path": str(item.resolve() if item.is_symlink() else item),
+                "mount": str(item),
+                "total": format_size(usage.total),
+                "used": format_size(usage.used),
+                "free": format_size(usage.free),
+            })
+        except PermissionError:
+            drives.append({
+                "name": item.name or item.drive,
+                "path": str(item),
+                "mount": str(item),
+                "total": "N/A",
+                "used": "N/A",
+                "free": "Không có quyền đọc",
+            })
+        except OSError:
+            continue
 
     gdrive_root = find_google_drive_root(auto_launch=False)
     if gdrive_root and gdrive_root.exists():
@@ -990,111 +899,132 @@ def search_files(keyword: str, root_str: str = "~", max_results: int = 30) -> di
     return {"ok": True, "root": str(root), "matches": matches}
 
 
-def safe_copy(src_str: str, dst_str: str) -> dict:
-    """
-    Copy a file or directory to dst_str.
-    Never overwrites existing files.
-    If copying into Google Drive:
-      - If an identical file (same name & size) already exists at destination, reuses it
-        instead of creating '(copy 1)' and immediately sends the Google Drive share link!
-      - Otherwise copies the file and starts a background thread to send the Google Drive
-        share link as soon as Google Drive finishes syncing!
-    """
-    src = Path(src_str).expanduser().resolve()
-    dst = Path(dst_str).expanduser().resolve()
+def search_shared(keyword: str, raw_root: str, limit: int = 15) -> list[str]:
+    """Return relative names from a locally approved directory, skipping links."""
+    root = Path(raw_root).expanduser().resolve()
+    query = strip_accents(keyword)
+    if not query or not root.is_dir() or limit <= 0:
+        return []
+    found = []
+    deadline = time.monotonic() + 2
+    for folder, dirs, files in os.walk(root):
+        if time.monotonic() >= deadline:
+            break
+        path = Path(folder)
+        dirs[:] = [name for name in dirs if not name.startswith(".") and not _is_link(path / name)]
+        for name in [*dirs, *files]:
+            candidate = path / name
+            if name.startswith(".") or _is_link(candidate) or query not in strip_accents(name):
+                continue
+            if candidate.resolve().is_relative_to(root):
+                found.append(f"{root.name}/{candidate.relative_to(root).as_posix()}")
+                if len(found) == limit:
+                    return found
+    return found
 
-    if not src.exists():
-        return {"ok": False, "error": f"File/thư mục nguồn không tồn tại: {src}"}
 
-    is_gdrive_dst = "googledrive" in str(dst).lower().replace(" ", "").replace("_", "").replace("-", "")
+def _is_link(path: Path) -> bool:
+    return path.is_symlink() or (hasattr(path, "is_junction") and path.is_junction())
 
-    if dst.exists() and dst.is_dir():
-        candidate_dst = dst / src.name
-        # If uploading to Google Drive and exact same file already exists, reuse it to get its link directly!
-        if (
-            is_gdrive_dst
-            and candidate_dst.exists()
-            and src.is_file()
-            and candidate_dst.is_file()
-            and src.stat().st_size == candidate_dst.stat().st_size
-        ):
-            threading.Thread(target=_wait_and_notify_gdrive_link, args=(candidate_dst, src), daemon=True).start()
-            try:
-                import gdrive_offload
-                if gdrive_offload.is_auto_offload_enabled():
-                    gdrive_offload.schedule_offload_when_synced(candidate_dst, src, notify=False)
-            except Exception:
-                pass
-            return {
-                "ok": True,
-                "action": "copy",
-                "src": str(src),
-                "dst": str(candidate_dst),
-                "reused_existing": True,
-            }
-        final_dst = get_unique_destination(candidate_dst)
+
+def _copy_contents(src: Path, dst: Path, drive_upload: bool) -> None:
+    if src.is_dir():
+        if drive_upload:
+            for folder, dirs, files in os.walk(src):
+                if any(_is_link(Path(folder) / name) for name in [*dirs, *files]):
+                    raise ValueError("Tách liên kết tượng trưng ra khỏi thư mục trước khi upload.")
+        dst.mkdir()
+        try:
+            shutil.copytree(src, dst, symlinks=True, dirs_exist_ok=True, copy_function=shutil.copyfile if drive_upload else shutil.copy2)
+        except Exception:
+            shutil.rmtree(dst)
+            raise
     else:
-        final_dst = get_unique_destination(dst)
-
-    final_dst.parent.mkdir(parents=True, exist_ok=True)
-
-    try:
-        if src.is_dir():
-            shutil.copytree(src, final_dst, dirs_exist_ok=False)
-        else:
-            shutil.copy2(src, final_dst)
-
-        if is_gdrive_dst:
-            threading.Thread(target=_wait_and_notify_gdrive_link, args=(final_dst, src), daemon=True).start()
+        with dst.open("xb") as output:
             try:
-                import gdrive_offload
-                if gdrive_offload.is_auto_offload_enabled():
-                    gdrive_offload.schedule_offload_when_synced(final_dst, src, notify=False)
+                with src.open("rb") as input_file:
+                    shutil.copyfileobj(input_file, output, length=1024 * 1024)
             except Exception:
-                pass
+                output.close()
+                dst.unlink()
+                raise
+        if drive_upload:
+            # Never copy FileProvider xattrs / cloud IDs from the source to a new item.
+            shutil.copymode(src, dst)
+        else:
+            shutil.copystat(src, dst)
 
-        return {
-            "ok": True,
-            "action": "copy",
-            "src": str(src),
-            "dst": str(final_dst),
-        }
-    except Exception as e:
-        return {"ok": False, "error": f"Lỗi khi sao chép: {e}"}
+
+def _rename_no_replace(src: Path, dst: Path) -> None:
+    if IS_WINDOWS:
+        os.rename(src, dst)  # Windows fails if the destination already exists.
+    elif IS_MAC:
+        import ctypes
+        libc = ctypes.CDLL(None, use_errno=True)
+        rename_excl = libc.renamex_np
+        rename_excl.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_uint]
+        rename_excl.restype = ctypes.c_int
+        if rename_excl(os.fsencode(src), os.fsencode(dst), 0x00000004) != 0:
+            err = ctypes.get_errno()
+            raise OSError(err, os.strerror(err), str(src), str(dst))
+    else:
+        raise OSError(errno.EXDEV, "Portable copy and remove")
+
+
+def _transfer(src_str: str, dst_str: str, move: bool, drive_upload: bool = False) -> dict:
+    try:
+        src = Path(src_str).expanduser().resolve(strict=True)
+        dst = Path(dst_str).expanduser().resolve()
+        if not (src.is_file() or src.is_dir()):
+            raise ValueError("Nguồn phải là file hoặc thư mục thông thường.")
+        if move and (src == Path.home() or src == BASE_DIR or src in BASE_DIR.parents or src.parent == src or src in {p.resolve() for p in mounted_roots()}):
+            raise ValueError("Không thể dời thư mục gốc, ổ đĩa hoặc thư mục hoạt động của bot.")
+        requested = dst / src.name if dst.is_dir() else dst
+        if requested == src or (src.is_dir() and requested.is_relative_to(src)):
+            raise ValueError("Đích phải nằm ngoài thư mục hoặc file nguồn.")
+        requested.parent.mkdir(parents=True, exist_ok=True)
+        for index in count():
+            suffix = requested.suffix if src.is_file() else ""
+            stem = requested.name[:-len(suffix)] if suffix else requested.name
+            final = requested if index == 0 else requested.with_name(f"{stem} (copy {index}){suffix}")
+            try:
+                if move:
+                    try:
+                        _rename_no_replace(src, final)
+                    except OSError as exc:
+                        if exc.errno != errno.EXDEV and getattr(exc, "winerror", None) != 17:
+                            raise
+                        _copy_contents(src, final, drive_upload=False)
+                        try:
+                            shutil.rmtree(src) if src.is_dir() else src.unlink()
+                        except OSError:
+                            return {"ok": False, "error": f"Đã tạo bản sao ở {final}, nhưng chưa thể dọn hết dữ liệu nguồn."}
+                else:
+                    _copy_contents(src, final, drive_upload)
+                break
+            except FileExistsError:
+                continue
+        return {"ok": True, "action": "move" if move else "copy", "src": str(src), "dst": str(final)}
+    except (ValueError, OSError) as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+def safe_copy(src_str: str, dst_str: str, *, drive_upload: bool = False) -> dict:
+    if not drive_upload:
+        root = find_google_drive_root(auto_launch=False)
+        drive_upload = bool(root and Path(dst_str).expanduser().resolve().is_relative_to(root.resolve()))
+    res = _transfer(src_str, dst_str, move=False, drive_upload=drive_upload)
+    if res.get("ok") and drive_upload and IS_MAC:
+        src, dst = (Path(res[key]) for key in ("src", "dst"))
+        threading.Thread(target=_wait_and_notify_gdrive_link, args=(dst, src), daemon=True).start()
+        import gdrive_offload
+        if gdrive_offload.is_auto_offload_enabled():
+            gdrive_offload.schedule_offload_when_synced(dst, src)
+    return res
 
 
 def safe_move(src_str: str, dst_str: str) -> dict:
-    """
-    Move a file or directory to dst_str (including across external drives).
-    Never overwrites existing files at destination.
-    """
-    src = Path(src_str).expanduser().resolve()
-    dst = Path(dst_str).expanduser().resolve()
-
-    if not src.exists():
-        return {"ok": False, "error": f"File/thư mục nguồn không tồn tại: {src}"}
-
-    protected = {Path("/"), Path("/Volumes"), Path("/Users"), Path.home()}
-    if src in protected:
-        return {"ok": False, "error": f"Từ chối dời thư mục gốc hệ thống: {src}"}
-
-    if dst.exists() and dst.is_dir():
-        final_dst = get_unique_destination(dst / src.name)
-    else:
-        final_dst = get_unique_destination(dst)
-
-    final_dst.parent.mkdir(parents=True, exist_ok=True)
-
-    try:
-        shutil.move(str(src), str(final_dst))
-        return {
-            "ok": True,
-            "action": "move",
-            "src": str(src),
-            "dst": str(final_dst),
-        }
-    except Exception as e:
-        return {"ok": False, "error": f"Lỗi khi dời file: {e}"}
+    return _transfer(src_str, dst_str, move=True)
 
 
 def get_folder_size(path_str: str) -> dict:
@@ -1147,58 +1077,38 @@ def find_google_drive_root(auto_launch: bool = True) -> Path | None:
     Locate mounted Google Drive folder on macOS (Google Drive for Desktop).
     Checks ~/Library/CloudStorage/GoogleDrive-*, ~/Google Drive, and /Volumes/GoogleDrive*.
     """
-    for attempt in range(2):
-        cloud_storage = Path.home() / "Library" / "CloudStorage"
+    selected = _read_json(CONFIG_PATH).get("google_drive_root")
+    if selected:
+        root = Path(selected).expanduser()
+        return root if root.is_dir() else None
+
+    names = ("My Drive", "Bộ nhớ của tôi", "Drive của tôi")
+    candidates = set()
+    cloud = Path.home() / "Library" / "CloudStorage"
+    locations = []
+    if IS_MAC:
+        if cloud.is_dir():
+            locations.extend(folder for folder in cloud.glob("GoogleDrive*") if folder.is_dir())
+        locations.extend(folder for folder in mounted_roots() if "googledrive" in strip_accents(folder.name).replace(" ", ""))
+    elif IS_WINDOWS:
+        locations.extend(root for root in mounted_roots() if any((root / name).is_dir() for name in names))
+
+    for loc in locations:
+        child = next((loc / name for name in names if (loc / name).is_dir()), None)
+        if child:
+            candidates.add(child.resolve())
+    direct = Path.home() / "Google Drive"
+    if direct.is_dir():
+        candidates.add(next((direct / name for name in names if (direct / name).is_dir()), direct).resolve())
+    if len(candidates) > 1:
+        return None
+    if candidates:
+        return candidates.pop()
+    if IS_MAC and auto_launch and Path("/Applications/Google Drive.app").exists():
         try:
-            if cloud_storage.exists():
-                for entry in sorted(cloud_storage.iterdir()):
-                    if entry.name.startswith("GoogleDrive"):
-                        for sub in ("My Drive", "Bộ nhớ của tôi", "Drive của tôi", "Drive của tôi"):
-                            candidate = entry / sub
-                            if candidate.exists():
-                                return candidate
-                        try:
-                            for child in sorted(entry.iterdir()):
-                                if child.is_dir() and not child.name.startswith("."):
-                                    return child
-                        except OSError:
-                            pass
-                        return entry
-        except OSError:
+            subprocess.run(["open", "-g", "-a", "Google Drive"], check=False, timeout=5)
+        except (OSError, subprocess.SubprocessError):
             pass
-
-        for direct_name in ("Google Drive", "My Drive", "Bộ nhớ của tôi", "Drive của tôi"):
-            try:
-                candidate = Path.home() / direct_name
-                if candidate.exists() and candidate.is_dir():
-                    for sub in ("My Drive", "Bộ nhớ của tôi", "Drive của tôi", "Drive của tôi"):
-                        sub_candidate = candidate / sub
-                        if sub_candidate.exists():
-                            return sub_candidate
-                    return candidate
-            except OSError:
-                pass
-
-        volumes = Path("/Volumes")
-        try:
-            if volumes.exists():
-                for entry in sorted(volumes.iterdir()):
-                    if "googledrive" in entry.name.lower() or "google drive" in entry.name.lower():
-                        for sub in ("My Drive", "Bộ nhớ của tôi", "Drive của tôi", "Drive của tôi"):
-                            candidate = entry / sub
-                            if candidate.exists():
-                                return candidate
-                        return entry
-        except OSError:
-            pass
-
-        if attempt == 0 and auto_launch and Path("/Applications/Google Drive.app").exists():
-            try:
-                subprocess.run(["open", "-g", "-a", "Google Drive"], timeout=5)
-                time.sleep(2)
-            except Exception:
-                break
-
     return None
 
 
@@ -1220,25 +1130,43 @@ def resolve_subfolder_fuzzy(root_dir: Path, subfolder: str) -> Path:
     return root_dir / subfolder.strip()
 
 
-def upload_to_google_drive(src_str: str, subfolder: str = "") -> dict:
-    """
-    Copy a file or folder into thư mục Google Drive mặc định (mặc định 'MacFileBot Uploads')
-    so Google Drive.app syncs it to the cloud and auto-sends the share link.
-    """
-    gdrive_root = find_google_drive_root(auto_launch=True)
-    if not gdrive_root:
-        return {
-            "ok": False,
-            "error": (
-                "Chưa tìm thấy thư mục Google Drive được gắn trên máy Mac. "
-                "Bạn hãy mở ứng dụng 'Google Drive.app' trên máy Mac trước nhé!"
-            ),
-        }
+def drive_upload_destination(subfolder: str = "") -> Path:
+    root = find_google_drive_root()
+    if not root:
+        raise ValueError("Chưa chọn được Google Drive. Đăng nhập Drive cho máy tính và chọn đúng thư mục Drive trong MediaTeleBot.")
+    info = get_default_gdrive_folder_info()
+    folder_name = subfolder.strip() or info["folder_name"]
+    if folder_name in (".", "..") or any(c in folder_name for c in "/\\"):
+        raise ValueError("Tên thư mục Drive không hợp lệ.")
+    if not subfolder and info.get("folder_id"):
+        matches = [entry for entry in root.iterdir() if entry.is_dir() and get_gdrive_cloud_id_from_xattr(entry) == info["folder_id"]]
+        if len(matches) != 1:
+            raise ValueError("Chưa xác minh được thư mục Drive theo URL. Hãy đồng bộ thư mục này hoặc chọn thư mục đích từ máy chủ.")
+        dest = matches[0].resolve()
+    else:
+        dest = (root / folder_name).resolve()
+    if not dest.is_relative_to(root.resolve()):
+        raise ValueError("Thư mục đích nằm ngoài Drive đã chọn.")
+    return dest
 
-    effective_subfolder = subfolder.strip() if subfolder and subfolder.strip() else DEFAULT_GDRIVE_SUBFOLDER
-    dst_dir = resolve_subfolder_fuzzy(gdrive_root, effective_subfolder)
-    dst_dir.mkdir(parents=True, exist_ok=True)
-    return safe_copy(src_str, str(dst_dir))
+
+def copy_to_drive_path(src_str: str, dst_str: str) -> dict:
+    try:
+        root = find_google_drive_root(auto_launch=False)
+        dest = Path(dst_str).resolve()
+        if not root or not dest.is_relative_to(root.resolve()):
+            raise ValueError("Đích không còn nằm trong Google Drive đã chọn. Hãy chọn lại.")
+        dest.mkdir(parents=True, exist_ok=True)
+        return safe_copy(src_str, str(dest), drive_upload=True)
+    except (ValueError, OSError) as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+def upload_to_google_drive(src_str: str, subfolder: str = "") -> dict:
+    try:
+        return copy_to_drive_path(src_str, str(drive_upload_destination(subfolder)))
+    except (ValueError, OSError) as exc:
+        return {"ok": False, "error": str(exc)}
 
 
 # ==============================================================================
@@ -1467,6 +1395,8 @@ def list_popular_apps() -> list[dict]:
 
 
 def get_trash_items(query: str | None = None, limit: int = 50) -> dict:
+    if not IS_MAC:
+        return {"ok": False, "error": "Thùng rác qua Finder cần macOS."}
     """Đọc danh sách và dung lượng file/thư mục trong Thùng rác (Trash) trên macOS (Chế độ chỉ đọc)."""
     jxa_script = """
     var finder = Application("Finder");

@@ -14,39 +14,12 @@ import datetime
 import json
 import os
 import re
-import ssl
 import urllib.request
 from pathlib import Path
 
-
-def _get_ssl_context():
-    try:
-        ctx = ssl.create_default_context()
-        if os.path.exists("/etc/ssl/cert.pem"):
-            ctx.load_verify_locations("/etc/ssl/cert.pem")
-        return ctx
-    except Exception:
-        pass
-    try:
-        return ssl._create_unverified_context()
-    except Exception:
-        return None
+from runtime import CONFIG_PATH, open_https as _urlopen_robust, read_config
 
 
-def _urlopen_robust(req, timeout=18):
-    ctx = _get_ssl_context()
-    try:
-        if ctx:
-            return urllib.request.urlopen(req, context=ctx, timeout=timeout)
-        return urllib.request.urlopen(req, timeout=timeout)
-    except Exception as e:
-        if "CERTIFICATE_VERIFY_FAILED" in str(e) or "certificate verify failed" in str(e):
-            unverified = ssl._create_unverified_context()
-            return urllib.request.urlopen(req, context=unverified, timeout=timeout)
-        raise
-
-
-CONFIG_PATH = Path(__file__).parent.resolve() / "config.json"
 DEFAULT_MODEL = "gemini-2.5-flash"
 FALLBACK_MODELS = [
     "gemini-2.5-flash",
@@ -321,7 +294,7 @@ def rewrite_to_command(user_text: str) -> str | None:
 def _call_gemini_vision(image_path: str, prompt_text: str, max_tokens: int = 500) -> str | None:
     """Gọi Gemini Vision với ảnh JPEG local và prompt text."""
     keys, model = _get_keys_and_model()
-    if not keys or not image_path or not os.path.exists(image_path):
+    if not read_config().get("gemini_vision_enabled") or not keys or not image_path or not os.path.exists(image_path):
         return None
     try:
         with open(image_path, "rb") as fp:
@@ -368,7 +341,7 @@ def locate_ui_element_on_screen(image_path: str, target_desc: str) -> dict:
             "found": False,
             "reason": (
                 "Chưa cài Gemini API Key miễn phí. "
-                "Lấy key tại https://aistudio.google.com/apikey rồi dán trực tiếp vào chat Telegram này để bật AI Vision!"
+                "Nhập Gemini API key trong trình cấu hình MediaTeleBot trên máy chủ."
             ),
         }
     prompt = (
@@ -424,7 +397,7 @@ def analyze_screen_with_gemini(image_path: str, question: str) -> str | None:
     if not _get_keys_and_model()[0]:
         return (
             "💡 Chưa cài Gemini API Key miễn phí để AI đọc màn hình.\n"
-            "👉 Bạn lấy key tại https://aistudio.google.com/apikey rồi dán trực tiếp vào chat Telegram này để bật tính năng phân tích màn hình thông minh!"
+            "Nhập Gemini API key trong trình cấu hình MediaTeleBot trên máy chủ để bật phân tích màn hình."
         )
     q = (question or "").strip() or "Màn hình máy Mac hiện đang hiển thị gì?"
     prompt = (

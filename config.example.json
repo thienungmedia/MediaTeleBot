@@ -1,9 +1,14 @@
 {
   "bot_token": "",
-  "gemini_api_key": "",
-  "gemini_model": "gemini-2.5-flash",
-  "default_gdrive_folder": "MacFileBot Uploads",
   "owner_id": null,
-  "chat_id": null,
-  "username": ""
+  "allowed_users": [],
+  "gemini_api_key": "",
+  "gemini_vision_enabled": false,
+  "default_gdrive_folder": "MacFileBot Uploads",
+  "google_drive_root": "",
+  "media_roots": [],
+  "shared_roots": [],
+  "macos_calendar": "",
+  "gcal_webhook_url": "",
+  "gcal_webhook_secret": ""
 }
