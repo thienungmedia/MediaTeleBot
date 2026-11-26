@@ -25,3 +25,9 @@ __pycache__/
 *.py[cod]
 .DS_Store
 .agents/
+
+# Local test packages, process state and private operation markers
+dist/
+*.lock
+*.request
+*.installing

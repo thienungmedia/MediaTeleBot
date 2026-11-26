@@ -1,454 +1,208 @@
-#!/usr/bin/env python3
+"""Calendar backends configured locally on the computer running the bot."""
 from __future__ import annotations
-"""
-gcal_bridge.py - Cầu nối tự động ghi & xem Google Calendar 100% không cần cài Antigravity.
-Hỗ trợ 3 lớp đồng bộ tự động (ưu tiên từ cao xuống thấp):
-1. gcalendar CLI (nếu máy có cài Antigravity).
-2. Google Apps Script Bridge (Web App cá nhân 1 phút — cả Ghi & Đọc trực tiếp Google Calendar API).
-3. macOS Calendar.app đồng bộ 2 chiều với tài khoản Google đã đăng nhập trên Mac (0 dòng code).
-"""
 
+import datetime as dt
 import json
-import os
 import re
-import ssl
 import subprocess
-import urllib.parse
 import urllib.request
-from pathlib import Path
 
-BASE_DIR = Path(__file__).parent.resolve()
-CONFIG_PATH = BASE_DIR / "config.json"
+from runtime import IS_MAC, edit_config, open_https, read_config
 
-APPS_SCRIPT_TEMPLATE = r"""function _parseYMD(s) {
-  var p = String(s).split("-");
-  return new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
+PROTOCOL = "mediatelebot-calendar-v1"
+URL_PATTERN = re.compile(r"https://script\.google\.com/(?:a/[^/]+/)?macros/s/[A-Za-z0-9_-]+/exec")
+
+APPS_SCRIPT_TEMPLATE = r"""function response_(data) {
+  return ContentService.createTextOutput(JSON.stringify(data))
+    .setMimeType(ContentService.MimeType.JSON);
 }
 
-function _handleReq(params) {
-  var cal = CalendarApp.getDefaultCalendar();
-  var tz = cal.getTimeZone() || Session.getScriptTimeZone();
-  var act = (params.action || "ping").toLowerCase();
-
-  if (act === "ping") {
-    return { ok: true, calendar: cal.getName(), timezone: tz };
-  }
-
-  if (act === "create") {
-    var summary = String(params.summary || "Lịch hẹn mới");
-    var sd = _parseYMD(params.start);
-    var ed = params.end ? _parseYMD(params.end) : null;
-    if (ed && (ed.getTime() - sd.getTime() > 86400000)) {
-      cal.createAllDayEvent(summary, sd, ed);
-    } else {
-      cal.createAllDayEvent(summary, sd);
-    }
-    return { ok: true, calendar: cal.getName(), summary: summary };
-  }
-
-  if (act === "list") {
-    var startD = new Date(params.start);
-    var endD = new Date(params.end);
-    var evs = cal.getEvents(startD, endD);
-    var list = evs.map(function(e) {
-      if (e.isAllDayEvent()) {
-        return {
-          summary: e.getTitle(),
-          start: { date: Utilities.formatDate(e.getAllDayStartDate(), tz, "yyyy-MM-dd") },
-          end: { date: Utilities.formatDate(e.getAllDayEndDate(), tz, "yyyy-MM-dd") }
-        };
-      }
-      return {
-        summary: e.getTitle(),
-        start: { dateTime: Utilities.formatDate(e.getStartTime(), tz, "yyyy-MM-dd'T'HH:mm:ssXXX") },
-        end: { dateTime: Utilities.formatDate(e.getEndTime(), tz, "yyyy-MM-dd'T'HH:mm:ssXXX") }
-      };
-    });
-    return { ok: true, calendar: cal.getName(), events: list };
-  }
-
-  return { ok: false, error: "Unknown action: " + act };
-}
-
-function doGet(e) {
-  var res = _handleReq((e && e.parameter) ? e.parameter : {});
-  return ContentService.createTextOutput(JSON.stringify(res)).setMimeType(ContentService.MimeType.JSON);
+function doGet() {
+  return response_({ok: false, error: 'POST required'});
 }
 
 function doPost(e) {
-  var body = {};
-  try { body = JSON.parse(e.postData.contents || "{}"); } catch (err) {}
-  var res = _handleReq(body);
-  return ContentService.createTextOutput(JSON.stringify(res)).setMimeType(ContentService.MimeType.JSON);
+  try {
+    const p = JSON.parse(e.postData.contents);
+    const secret = PropertiesService.getScriptProperties().getProperty('MEDIATELEBOT_SECRET');
+    if (!secret || secret.length < 32 || typeof p.secret !== 'string' || p.secret.length !== secret.length) {
+      return response_({ok: false, error: 'Unauthorized'});
+    }
+    let diff = 0;
+    for (let i = 0; i < secret.length; i++) diff |= secret.charCodeAt(i) ^ p.secret.charCodeAt(i);
+    if (diff !== 0) return response_({ok: false, error: 'Unauthorized'});
+
+    const cal = CalendarApp.getDefaultCalendar();
+    const tz = cal.getTimeZone();
+    if (p.action === 'ping') {
+      return response_({ok: true, protocol: 'mediatelebot-calendar-v1', calendar: cal.getName()});
+    }
+    if (p.action === 'create') {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(p.start) || !/^\d{4}-\d{2}-\d{2}$/.test(p.end) ||
+          typeof p.summary !== 'string' || !p.summary.trim() || p.summary.length > 500) {
+        return response_({ok: false, error: 'Invalid event'});
+      }
+      const start = Utilities.parseDate(p.start, tz, 'yyyy-MM-dd');
+      const end = Utilities.parseDate(p.end, tz, 'yyyy-MM-dd');
+      if (end <= start) return response_({ok: false, error: 'Invalid date range'});
+      cal.createAllDayEvent(p.summary, start, end);
+      return response_({ok: true, calendar: cal.getName()});
+    }
+    if (p.action === 'list') {
+      const start = new Date(p.start);
+      const end = new Date(p.end);
+      if (!isFinite(+start) || !isFinite(+end) || end <= start || end - start > 90 * 86400000) {
+        return response_({ok: false, error: 'Invalid date range'});
+      }
+      const date = (d) => Utilities.formatDate(d, tz, 'yyyy-MM-dd');
+      const events = cal.getEvents(start, end, {max: 250}).map(function (event) {
+        const allDay = event.isAllDayEvent();
+        return {
+          summary: event.getTitle(),
+          start: allDay ? {date: date(event.getAllDayStartDate())} : {dateTime: event.getStartTime().toISOString()},
+          end: allDay ? {date: date(event.getAllDayEndDate())} : {dateTime: event.getEndTime().toISOString()}
+        };
+      });
+      return response_({ok: true, events: events});
+    }
+    return response_({ok: false, error: 'Unknown action'});
+  } catch (_) {
+    return response_({ok: false, error: 'Calendar request failed'});
+  }
 }"""
 
-
-def _get_ssl_context():
-    try:
-        ctx = ssl.create_default_context()
-        if os.path.exists("/etc/ssl/cert.pem"):
-            ctx.load_verify_locations("/etc/ssl/cert.pem")
-        return ctx
-    except Exception:
-        pass
-    try:
-        return ssl._create_unverified_context()
-    except Exception:
-        return None
-
-
-def _urlopen_robust(req, timeout: int = 20):
-    ctx = _get_ssl_context()
-    try:
-        if ctx:
-            return urllib.request.urlopen(req, context=ctx, timeout=timeout)
-        return urllib.request.urlopen(req, timeout=timeout)
-    except Exception as e:
-        if "CERTIFICATE_VERIFY_FAILED" in str(e) or "certificate verify failed" in str(e):
-            unverified = ssl._create_unverified_context()
-            return urllib.request.urlopen(req, context=unverified, timeout=timeout)
-        raise
-
-
-def _read_config() -> dict:
-    if CONFIG_PATH.exists():
-        try:
-            return json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
-        except Exception:
-            pass
-    return {}
-
-
-def get_webhook_url() -> str:
-    env_url = os.environ.get("GCAL_WEBHOOK_URL", "").strip()
-    if env_url:
-        return env_url
-    cfg = _read_config()
-    return (cfg.get("gcal_webhook_url") or "").strip()
-
-
-def save_webhook_url(url: str) -> dict:
-    """Xác thực URL Google Apps Script bằng ?action=ping rồi lưu vào config.json."""
-    clean = (url or "").strip().strip("`'\"<> ")
-    if not re.match(r"^https://script\.google\.com/(?:a/macros/[^/]+/)?macros/s/[A-Za-z0-9_\-]+/exec\b", clean):
-        return {
-            "ok": False,
-            "error": (
-                "❌ Đường dẫn Google Apps Script không hợp lệ.\n"
-                "URL đúng phải có dạng: `https://script.google.com/macros/s/.../exec`"
-            ),
-        }
-
-    clean = clean.split("?", 1)[0]
-    ping_url = f"{clean}?action=ping"
-    req = urllib.request.Request(ping_url, headers={"User-Agent": "MacFileBot-GCal/1.0"})
-    try:
-        with _urlopen_robust(req, timeout=20) as resp:
-            raw = resp.read().decode("utf-8", "replace").strip()
-        data = json.loads(raw)
-        if not data.get("ok"):
-            return {"ok": False, "error": f"❌ Apps Script báo lỗi: {data.get('error', 'Không rõ')}"}
-    except Exception as e:
-        return {
-            "ok": False,
-            "error": (
-                f"❌ Không kết nối được tới Google Apps Script ({e}).\n"
-                "👉 Hãy kiểm tra lúc Deploy đã chọn quyền truy cập **Anyone (Bất kỳ ai)** chưa nhé!"
-            ),
-        }
-
-    cfg = _read_config()
-    cfg["gcal_webhook_url"] = clean
-    try:
-        CONFIG_PATH.write_text(json.dumps(cfg, indent=2, ensure_ascii=False), encoding="utf-8")
-    except Exception as e:
-        return {"ok": False, "error": f"❌ Lỗi lưu cấu hình: {e}"}
-
-    cal_name = data.get("calendar") or "Google Calendar"
+MAC_CALENDAR = r"""
+function ymd(d) {
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+function localDate(s) {
+  const p = s.split('-').map(Number);
+  return new Date(p[0], p[1] - 1, p[2]);
+}
+function run(args) {
+  const [operation, name, first, last, summary] = args;
+  const app = Application('Calendar');
+  const cals = app.calendars.whose({name: name})();
+  if (cals.length !== 1) throw Error('Select a uniquely named calendar');
+  const calendar = cals[0];
+  if (operation === 'create') {
+    calendar.events.push(app.Event({
+      summary: summary, startDate: localDate(first), endDate: localDate(last), alldayEvent: true
+    }));
+    return JSON.stringify({ok: true, calendar: name});
+  }
+  const start = new Date(first);
+  const end = new Date(last);
+  const found = calendar.events.whose({_and: [
+    {startDate: {_lessThan: end}},
+    {endDate: {_greaterThan: start}}
+  ]})();
+  return JSON.stringify(found.slice(0, 250).map(function (event) {
+    const allDay = event.alldayEvent();
+    const a = event.startDate();
+    const b = event.endDate();
     return {
-        "ok": True,
-        "calendar": cal_name,
-        "url": clean,
-        "reply": (
-            f"✅ ĐÃ KẾT NỐI TỰ ĐỘNG GOOGLE CALENDAR THÀNH CÔNG!\n"
-            f"• 📅 Lịch đích: *{cal_name}*\n"
-            f"• ⚡ Chế độ: Tự động 100% cả GHI & ĐỌC lịch trực tiếp từ Google (không cần Antigravity, không cần bấm xác nhận web)."
-        ),
+      summary: event.summary(),
+      start: allDay ? {date: ymd(a)} : {dateTime: a.toISOString()},
+      end: allDay ? {date: ymd(b)} : {dateTime: b.toISOString()}
+    };
+  }));
+}
+"""
+
+
+def _post_webhook(url: str, secret: str, action: str, **fields) -> dict:
+    req = urllib.request.Request(
+        url, data=json.dumps(dict(fields, action=action, secret=secret)).encode("utf-8"),
+        headers={"Content-Type": "application/json"}, method="POST",
+    )
+    with open_https(req, timeout=20) as response:
+        data = json.loads(response.read(1024 * 1024))
+    if not isinstance(data, dict) or not data.get("ok"):
+        raise ValueError("Apps Script từ chối yêu cầu.")
+    return data
+
+
+def configure_webhook(url: str, secret: str) -> str:
+    url = url.strip()
+    if not URL_PATTERN.fullmatch(url) or len(secret) < 32:
+        raise ValueError("Cần URL /exec chính thức và khóa ít nhất 32 ký tự.")
+    try:
+        result = _post_webhook(url, secret, "ping")
+        if result.get("protocol") != PROTOCOL:
+            raise ValueError("Phiên bản Apps Script không tương thích.")
+        try:
+            _post_webhook(url, "0" * len(secret), "ping")
+        except ValueError:
+            pass
+        else:
+            raise ValueError("Deployment vẫn cho phép truy cập khi thiếu khóa hợp lệ.")
+    except (OSError, ValueError):
+        raise ValueError("Không xác nhận được bản Apps Script có khóa bảo vệ. Kiểm tra URL, deployment và Script Property.") from None
+    edit_config(lambda cfg: cfg.update(gcal_webhook_url=url, gcal_webhook_secret=secret))
+    return result.get("calendar") or "Google Calendar"
+
+
+def _webhook(config: dict) -> tuple[str, str] | None:
+    url = config.get("gcal_webhook_url") or ""
+    secret = config.get("gcal_webhook_secret") or ""
+    if URL_PATTERN.fullmatch(url) and len(secret) >= 32:
+        return url, secret
+    return None
+
+
+def _mac_calendar(action: str, name: str, start_iso: str, end_iso: str, summary: str = ""):
+    result = subprocess.run(
+        ["/usr/bin/osascript", "-l", "JavaScript", "-e", MAC_CALENDAR, action, name, start_iso, end_iso, summary],
+        capture_output=True, text=True, timeout=25, check=True,
+    )
+    return json.loads(result.stdout)
+
+
+def get_calendar_sync_status() -> dict:
+    config = read_config()
+    return {
+        "has_webhook": bool(_webhook(config)),
+        "legacy_webhook": bool(config.get("gcal_webhook_url") and not _webhook(config)),
+        "macos_calendar": config.get("macos_calendar") if IS_MAC else None,
     }
 
 
 def open_macos_internet_accounts() -> dict:
-    """Mở thẳng màn hình Tài khoản Internet của macOS để người dùng bật Lịch Google."""
+    if not IS_MAC:
+        return {"ok": False, "error": "Cài đặt này dành cho macOS."}
+    subprocess.run(["/usr/bin/open", "x-apple.systempreferences:com.apple.Internet-Accounts"], check=True, timeout=10)
+    return {"ok": True, "reply": "Đã mở Tài khoản Internet trên Mac. Sau khi đăng nhập, nhập chính xác tên lịch trong trình cấu hình MediaTeleBot."}
+
+
+def create_google_calendar_event(summary: str, start, end_inclusive) -> dict:
+    cfg = read_config()
+    start_iso = start.isoformat()
+    end_iso = (end_inclusive + dt.timedelta(days=1)).isoformat()
+    webhook = _webhook(cfg)
+    calendar = cfg.get("macos_calendar") if IS_MAC else None
+    if not (webhook or calendar):
+        return {"method": "local"}
     try:
-        r = subprocess.run(
-            ["open", "x-apple.systempreferences:com.apple.Internet-Accounts-Settings.extension"],
-            capture_output=True,
-            text=True,
-            timeout=6,
-        )
-        if r.returncode != 0:
-            subprocess.run(["open", "-b", "com.apple.systempreferences"], capture_output=True, timeout=6)
-        return {
-            "ok": True,
-            "reply": (
-                "⚙️ Đã mở màn hình *Cài đặt hệ thống → Tài khoản Internet (Internet Accounts)* trên máy Mac!\n\n"
-                "👉 Bạn chỉ cần chọn *Thêm tài khoản → Google* (hoặc bấm vào Gmail có sẵn) và gạt BẬT mục **Lịch (Calendars)** là xong — từ nay bot sẽ tự động đồng bộ lịch 2 chiều lên Google Calendar!"
-            ),
-        }
-    except Exception as e:
-        return {"ok": False, "error": f"❌ Không thể mở Cài đặt hệ thống: {e}"}
+        if webhook:
+            res = _post_webhook(*webhook, "create", summary=summary, start=start_iso, end=end_iso)
+            return {"method": "apps_script", "calendar": res.get("calendar"), "synced_google": True}
+        _mac_calendar("create", calendar, start_iso, end_iso, summary)
+        return {"method": "macos_calendar", "calendar": calendar}
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return {"method": "uncertain"}
 
 
-def create_via_webhook(summary: str, start_iso: str, end_iso: str) -> dict:
-    """Tạo sự kiện trực tiếp lên Google Calendar qua Google Apps Script Web App."""
-    url = get_webhook_url()
-    if not url:
-        return {"ok": False, "error": "Chưa cấu hình gcal_webhook_url"}
-
-    payload = json.dumps({
-        "action": "create",
-        "summary": summary,
-        "start": start_iso,
-        "end": end_iso,
-    }).encode("utf-8")
-    req = urllib.request.Request(
-        url,
-        data=payload,
-        headers={"Content-Type": "application/json", "User-Agent": "MacFileBot-GCal/1.0"},
-        method="POST",
-    )
-    try:
-        with _urlopen_robust(req, timeout=20) as resp:
-            data = json.loads(resp.read().decode("utf-8", "replace"))
-        if data.get("ok"):
-            return {"ok": True, "calendar": data.get("calendar") or "Google Calendar", "method": "apps_script"}
-        return {"ok": False, "error": data.get("error") or "Apps Script không trả về ok"}
-    except Exception:
-        # Dự phòng qua GET query params (phòng trường hợp redirect 302 đổi POST)
-        try:
-            qs = urllib.parse.urlencode({
-                "action": "create",
-                "summary": summary,
-                "start": start_iso,
-                "end": end_iso,
-            })
-            req_g = urllib.request.Request(f"{url}?{qs}", headers={"User-Agent": "MacFileBot-GCal/1.0"})
-            with _urlopen_robust(req_g, timeout=20) as resp2:
-                data2 = json.loads(resp2.read().decode("utf-8", "replace"))
-            if data2.get("ok"):
-                return {"ok": True, "calendar": data2.get("calendar") or "Google Calendar", "method": "apps_script"}
-            return {"ok": False, "error": data2.get("error") or "Lỗi Apps Script"}
-        except Exception as e2:
-            return {"ok": False, "error": str(e2)}
-
-
-def list_via_webhook(start_iso: str, end_iso: str) -> list[dict]:
-    """Đọc danh sách sự kiện trực tiếp từ Google Calendar qua Google Apps Script Web App."""
-    url = get_webhook_url()
-    if not url:
+def list_events(start_iso: str, end_iso: str) -> list[dict]:
+    cfg = read_config()
+    webhook = _webhook(cfg)
+    calendar = cfg.get("macos_calendar") if IS_MAC else None
+    if not (webhook or calendar):
         return []
-    try:
-        qs = urllib.parse.urlencode({"action": "list", "start": start_iso, "end": end_iso})
-        req = urllib.request.Request(f"{url}?{qs}", headers={"User-Agent": "MacFileBot-GCal/1.0"})
-        with _urlopen_robust(req, timeout=20) as resp:
-            data = json.loads(resp.read().decode("utf-8", "replace"))
-        if data.get("ok") and isinstance(data.get("events"), list):
-            return data["events"]
-    except Exception:
-        pass
-    return []
-
-
-def create_via_macos_calendar(summary: str, d_start, d_end_inclusive) -> dict:
-    """
-    Tạo sự kiện cả ngày trong Calendar.app bản địa của macOS.
-    Nếu máy đã đăng nhập tài khoản Google trong Internet Accounts và bật Lịch (is_google_sync=True),
-    Calendar.app sẽ tự động đồng bộ 2 chiều lên Google Calendar ngay lập tức.
-    """
-    safe_summary = summary.replace("\\", "\\\\").replace('"', '\\"')
-    script = f'''
-    try
-        set startDate to current date
-        set time of startDate to 0
-        set day of startDate to 1
-        set year of startDate to {d_start.year}
-        set month of startDate to {d_start.month}
-        set day of startDate to {d_start.day}
-
-        set endDate to current date
-        set time of endDate to 0
-        set day of endDate to 1
-        set year of endDate to {d_end_inclusive.year}
-        set month of endDate to {d_end_inclusive.month}
-        set day of endDate to {d_end_inclusive.day}
-
-        tell application "Calendar"
-            set targetCal to missing value
-            set isGoogleSync to false
-            set calList to every calendar whose writable is true
-            repeat with c in calList
-                set cName to name of c
-                if cName contains "@" or cName contains "Google" or cName contains "Gmail" then
-                    set targetCal to c
-                    set isGoogleSync to true
-                    exit repeat
-                end if
-            end repeat
-            if targetCal is missing value then
-                repeat with c in calList
-                    set cName to name of c
-                    if cName contains "Lịch" or cName contains "Calendar" or cName contains "Work" or cName contains "Công việc" or cName contains "Home" or cName contains "Cá nhân" then
-                        set targetCal to c
-                        exit repeat
-                    end if
-                end repeat
-            end if
-            if targetCal is missing value and (count of calList) > 0 then
-                set targetCal to item 1 of calList
-            end if
-            if targetCal is not missing value then
-                tell targetCal
-                    make new event at end with properties {{summary:"{safe_summary}", start date:startDate, end date:endDate, allday event:true}}
-                end tell
-                set calOutName to name of targetCal
-                if isGoogleSync then
-                    try
-                        reload calendars
-                    end try
-                    return "GOOGLE|" & calOutName
-                else
-                    return "LOCAL|" & calOutName
-                end if
-            end if
-        end tell
-    end try
-    return ""
-    '''
-    try:
-        res = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, timeout=10)
-        raw_out = (res.stdout or "").strip()
-        if res.returncode == 0 and "|" in raw_out:
-            tag, cal_name = raw_out.split("|", 1)
-            return {
-                "ok": True,
-                "calendar": cal_name.strip(),
-                "is_google_sync": (tag == "GOOGLE"),
-            }
-    except Exception:
-        pass
-    return {"ok": False, "calendar": None, "is_google_sync": False}
-
-
-def get_calendar_sync_status(gcalendar_bin: str = "") -> dict:
-    """Kiểm tra tất cả các kênh đồng bộ Google Calendar tự động hiện có trên máy."""
-    has_cli = bool(gcalendar_bin and Path(gcalendar_bin).exists())
-    webhook_url = get_webhook_url()
-    has_webhook = bool(webhook_url)
-
-    macos_google_cals = []
-    macos_other_cals = []
-    try:
-        r = subprocess.run(
-            [
-                "osascript",
-                "-e",
-                'tell application "Calendar"\nset out to {}\nrepeat with c in (every calendar whose writable is true)\nset end of out to name of c\nend repeat\nreturn out\nend tell',
-            ],
-            capture_output=True,
-            text=True,
-            timeout=6,
-        )
-        if r.returncode == 0 and r.stdout.strip():
-            for item in r.stdout.strip().split(", "):
-                cn = item.strip()
-                if not cn:
-                    continue
-                if "@" in cn or "Google" in cn or "Gmail" in cn:
-                    macos_google_cals.append(cn)
-                else:
-                    macos_other_cals.append(cn)
-    except Exception:
-        pass
-
-    return {
-        "has_cli": has_cli,
-        "has_webhook": has_webhook,
-        "webhook_url": webhook_url,
-        "macos_google_cals": macos_google_cals,
-        "macos_other_cals": macos_other_cals,
-        "auto_ready": has_cli or has_webhook or bool(macos_google_cals),
-    }
-
-
-def create_google_calendar_event(
-    summary: str,
-    d_start,
-    d_end_inclusive,
-    gcalendar_bin: str = "",
-) -> dict:
-    """
-    Tự động ghi sự kiện vào Google Calendar theo thứ tự ưu tiên:
-    1) gcalendar CLI (Antigravity)
-    2) Google Apps Script Bridge (Web App cá nhân)
-    3) macOS Calendar.app đồng bộ 2 chiều với Google
-    4) fallback chỉ lưu cục bộ (local_only)
-    """
-    import datetime
-
-    start_iso = d_start.isoformat()
-    end_iso = (d_end_inclusive + datetime.timedelta(days=1)).isoformat()
-
-    # 1. Antigravity gcalendar CLI
-    if gcalendar_bin and Path(gcalendar_bin).exists():
-        try:
-            res = subprocess.run(
-                [gcalendar_bin, "mutate", "create", "--summary", summary, "--start", start_iso, "--end", end_iso, "--all-day"],
-                capture_output=True,
-                text=True,
-                timeout=60,
-            )
-            out = (res.stdout or "") + (res.stderr or "")
-            if res.returncode == 0:
-                link_m = re.search(r"Link:\s*(\S+)", out)
-                return {
-                    "ok": True,
-                    "synced_google": True,
-                    "method": "antigravity_cli",
-                    "calendar": "Google Calendar (Antigravity)",
-                    "link": link_m.group(1) if link_m else None,
-                }
-        except Exception:
-            pass
-
-    # 2. Google Apps Script Bridge
-    if get_webhook_url():
-        wh_res = create_via_webhook(summary, start_iso, end_iso)
-        if wh_res.get("ok"):
-            return {
-                "ok": True,
-                "synced_google": True,
-                "method": "apps_script",
-                "calendar": wh_res.get("calendar") or "Google Calendar",
-                "link": None,
-            }
-
-    # 3. macOS Calendar.app (đồng bộ Google 2 chiều hoặc Lịch nội bộ)
-    mac_res = create_via_macos_calendar(summary, d_start, d_end_inclusive)
-    if mac_res.get("ok"):
-        is_gsync = bool(mac_res.get("is_google_sync"))
-        return {
-            "ok": True,
-            "synced_google": is_gsync,
-            "method": "macos_google_sync" if is_gsync else "macos_local",
-            "calendar": mac_res.get("calendar"),
-            "link": None,
-        }
-
-    # 4. Chỉ mới lưu cục bộ
-    return {
-        "ok": False,
-        "synced_google": False,
-        "method": "local_only",
-        "calendar": None,
-        "link": None,
-    }
+    if webhook:
+        events = _post_webhook(*webhook, "list", start=start_iso, end=end_iso).get("events")
+    else:
+        events = _mac_calendar("list", calendar, start_iso, end_iso)
+    if not isinstance(events, list):
+        raise ValueError("Phản hồi lịch không hợp lệ.")
+    return events

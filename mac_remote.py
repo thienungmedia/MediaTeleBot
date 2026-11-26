@@ -13,14 +13,23 @@ import os
 import re
 import shutil
 import subprocess
+import tempfile
 import time
 from pathlib import Path
 
+from runtime import IS_MAC
+
 import safe_fs
 
-SCREEN_RAW = "/tmp/macfilebot_screen_raw.jpg"
-SCREEN_VIEW = "/tmp/macfilebot_screen_view.jpg"
-SCREEN_GRID = "/tmp/macfilebot_screen_grid.jpg"
+_screen_temp: tempfile.TemporaryDirectory | None = None
+
+
+def clear_capture() -> None:
+    global _screen_temp
+    if _screen_temp:
+        _screen_temp.cleanup()
+        _screen_temp = None
+
 
 GRID_COLS = 8
 GRID_ROWS = 6
@@ -86,14 +95,25 @@ def _get_cg():
     return cg
 
 
+class _CGSize(ctypes.Structure):
+    _fields_ = [("width", ctypes.c_double), ("height", ctypes.c_double)]
+
+
+class _CGRect(ctypes.Structure):
+    _fields_ = [("origin", _CGPoint), ("size", _CGSize)]
+
+
 def get_screen_size() -> tuple[int, int]:
     """Lấy kích thước logic màn hình chính (vd 2560 x 1440), fallback (1920, 1080)."""
     try:
         cg = _get_cg()
         if cg:
             did = cg.CGMainDisplayID()
-            w = int(cg.CGDisplayPixelsWide(did))
-            h = int(cg.CGDisplayPixelsHigh(did))
+            cg.CGDisplayBounds.argtypes = [ctypes.c_uint32]
+            cg.CGDisplayBounds.restype = _CGRect
+            bounds = cg.CGDisplayBounds(did)
+            w = int(bounds.size.width)
+            h = int(bounds.size.height)
             if w > 0 and h > 0:
                 return w, h
     except Exception:
@@ -265,10 +285,16 @@ def capture_screen(
     hd: bool = False,
 ) -> dict:
     """Chụp màn hình thực tế máy Mac; hỗ trợ ảnh thường gọn nhẹ, ảnh HD gốc, lưới A1-H6 hoặc chấm đỏ đánh dấu."""
+    if not IS_MAC:
+        return {"ok": False, "error": "Chụp màn hình bằng MediaTeleBot cần macOS."}
+    global _screen_temp
+    clear_capture()
+    _screen_temp = tempfile.TemporaryDirectory(prefix="mediatelebot-screen-")
+    screen_raw, screen_view, screen_grid = (str(Path(_screen_temp.name) / name) for name in ("raw.jpg", "view.jpg", "grid.jpg"))
     wake_display()
     try:
         res = subprocess.run(
-            ["/usr/sbin/screencapture", "-x", "-t", "jpg", SCREEN_RAW],
+            ["/usr/sbin/screencapture", "-x", "-m", "-t", "jpg", screen_raw],
             capture_output=True,
             text=True,
             timeout=10,
@@ -283,7 +309,7 @@ def capture_screen(
             ),
         }
 
-    if res.returncode != 0 or not os.path.exists(SCREEN_RAW) or os.path.getsize(SCREEN_RAW) == 0:
+    if res.returncode != 0 or not os.path.exists(screen_raw) or os.path.getsize(screen_raw) == 0:
         return {
             "ok": False,
             "permission_error": True,
@@ -297,8 +323,8 @@ def capture_screen(
     if hd and not with_grid and not mark_xy:
         return {
             "ok": True,
-            "path": SCREEN_RAW,
-            "raw_path": SCREEN_RAW,
+            "path": screen_raw,
+            "raw_path": screen_raw,
             "logical_w": lw,
             "logical_h": lh,
         }
@@ -315,9 +341,9 @@ def capture_screen(
                 "-s",
                 "formatOptions",
                 "80",
-                SCREEN_RAW,
+                screen_raw,
                 "--out",
-                SCREEN_VIEW,
+                screen_view,
             ],
             capture_output=True,
             text=True,
@@ -326,14 +352,14 @@ def capture_screen(
     except Exception:
         pass
 
-    base_img = SCREEN_VIEW if (os.path.exists(SCREEN_VIEW) and os.path.getsize(SCREEN_VIEW) > 0) else SCREEN_RAW
+    base_img = screen_view if (os.path.exists(screen_view) and os.path.getsize(screen_view) > 0) else screen_raw
 
     if with_grid or mark_xy:
-        if _render_overlay_jxa(base_img, SCREEN_GRID, with_grid, mark_xy):
+        if _render_overlay_jxa(base_img, screen_grid, with_grid, mark_xy):
             return {
                 "ok": True,
-                "path": SCREEN_GRID,
-                "raw_path": SCREEN_RAW,
+                "path": screen_grid,
+                "raw_path": screen_raw,
                 "logical_w": lw,
                 "logical_h": lh,
             }
@@ -341,7 +367,7 @@ def capture_screen(
     return {
         "ok": True,
         "path": base_img,
-        "raw_path": SCREEN_RAW,
+        "raw_path": screen_raw,
         "logical_w": lw,
         "logical_h": lh,
     }

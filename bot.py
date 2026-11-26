@@ -1,26 +1,23 @@
 #!/usr/bin/env python3
 from __future__ import annotations
-"""
-Telegram Safe File Manager Bot & Antigravity Bridge for macOS.
-- 100% No-Delete Architecture (only browse, search, copy, and non-overwriting move).
-- Interactive Inline Keyboard buttons on Telegram for browsing drives & folders,
-  plus 2-tap Copy / Move between drives!
-- Also bridges natural language requests directly to Antigravity AI.
-"""
+"""MediaTeleBot Telegram polling and command routing."""
 
-import fcntl
-import importlib
 import json
 import os
 import re
 import signal
 import sys
-import threading
 import time
 import urllib.parse
 import urllib.request
 import uuid
 from pathlib import Path
+
+from runtime import BASE_DIR, CONFIG_PATH, IS_MAC, edit_config, lock_instance, read_config
+from runtime import open_https as _urlopen_robust
+
+import pairing
+import updater
 
 import gcal_bridge
 import mac_remote
@@ -38,55 +35,12 @@ from safe_fs import (
 import nl_engine
 from nl_engine import parse_and_execute_nl, find_best_matches
 
-BASE_DIR = Path(__file__).parent.resolve()
-CONFIG_PATH = BASE_DIR / "config.json"
-INBOX_PATH = BASE_DIR / "inbox.jsonl"
-OUTBOX_PATH = BASE_DIR / "outbox.jsonl"
-OUTBOX_RESULT_PATH = BASE_DIR / "outbox_result.json"
-SYSINFO_PATH = BASE_DIR / "system_info.json"
-
-
 def load_config() -> dict:
-    if CONFIG_PATH.exists():
-        try:
-            return json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
-        except Exception:
-            pass
-    return {}
+    return read_config(CONFIG_PATH)
 
 
-def save_config(cfg: dict) -> None:
-    current = load_config()
-    current.update(cfg)
-    CONFIG_PATH.write_text(json.dumps(current, indent=2, ensure_ascii=False), encoding="utf-8")
-
-
-import ssl
-
-def _get_ssl_context():
-    try:
-        ctx = ssl.create_default_context()
-        if os.path.exists("/etc/ssl/cert.pem"):
-            ctx.load_verify_locations("/etc/ssl/cert.pem")
-        return ctx
-    except Exception:
-        pass
-    try:
-        return ssl._create_unverified_context()
-    except Exception:
-        return None
-
-def _urlopen_robust(req, timeout=35):
-    ctx = _get_ssl_context()
-    try:
-        if ctx:
-            return urllib.request.urlopen(req, context=ctx, timeout=timeout)
-        return urllib.request.urlopen(req, timeout=timeout)
-    except Exception as e:
-        if "CERTIFICATE_VERIFY_FAILED" in str(e) or "certificate verify failed" in str(e):
-            unverified = ssl._create_unverified_context()
-            return urllib.request.urlopen(req, context=unverified, timeout=timeout)
-        raise
+def update_config(change):
+    return edit_config(change, CONFIG_PATH)
 
 
 class TelegramClient:
@@ -319,97 +273,6 @@ def send_nl_response(client: TelegramClient, chat_id: int, nl_res: dict) -> None
     client.send_message(chat_id, nl_res["reply"], reply_markup=markup)
 
 
-def write_system_snapshot() -> None:
-    try:
-        home = Path.home()
-        gdrive_root = find_google_drive_root(auto_launch=False)
-        snap = {
-            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
-            "drives": list_drives(),
-            "google_drive_root": str(gdrive_root) if gdrive_root else None,
-            "desktop": list_directory(str(home / "Desktop"), limit=50),
-            "downloads": list_directory(str(home / "Downloads"), limit=50),
-            "cloud_storage": list_directory(str(home / "Library" / "CloudStorage"), limit=20),
-        }
-        SYSINFO_PATH.write_text(json.dumps(snap, indent=2, ensure_ascii=False), encoding="utf-8")
-    except Exception as e:
-        print(f"[Snapshot error]: {e}", file=sys.stderr, flush=True)
-
-
-def outbox_worker(client: TelegramClient, cfg: dict) -> None:
-    """Background thread watching outbox.jsonl for commands from Antigravity."""
-    while True:
-        try:
-            if OUTBOX_PATH.exists():
-                content = OUTBOX_PATH.read_text(encoding="utf-8").strip()
-                if content:
-                    OUTBOX_PATH.write_text("", encoding="utf-8")
-                    results = []
-                    for line in content.splitlines():
-                        if not line.strip():
-                            continue
-                        cmd = json.loads(line)
-                        act = cmd.get("action")
-                        cid = cmd.get("chat_id") or cfg.get("chat_id")
-                        if act == "send" and cid:
-                            client.send_message(cid, cmd.get("text", ""))
-                            results.append({"ok": True, "action": "send"})
-                        elif act == "ls":
-                            results.append(list_directory(cmd.get("path", "~"), limit=100))
-                        elif act == "find":
-                            results.append({"ok": True, "matches": find_best_matches(cmd.get("query", ""))})
-                        elif act == "size":
-                            results.append(get_folder_size(cmd.get("path", "~")))
-                        elif act == "copy":
-                            res = safe_copy(cmd["src"], cmd["dst"])
-                            results.append(res)
-                            if cmd.get("notify") and cid:
-                                client.send_message(cid, f"✅ Đã sao chép:\n• Từ: {res.get('src')}\n• Sang: {res.get('dst')}")
-                        elif act == "move":
-                            res = safe_move(cmd["src"], cmd["dst"])
-                            results.append(res)
-                            if cmd.get("notify") and cid:
-                                client.send_message(cid, f"✅ Đã chuyển:\n• Từ: {res.get('src')}\n• Sang: {res.get('dst')}")
-                        elif act == "gdrive":
-                            res = upload_to_google_drive(cmd["src"], cmd.get("subfolder", ""))
-                            results.append(res)
-                            if cmd.get("notify") and cid:
-                                if res.get("ok"):
-                                    client.send_message(cid, f"☁️ Đã đưa lên Google Drive:\n• Nguồn: {res.get('src')}\n• Đích: {res.get('dst')}")
-                                else:
-                                    client.send_message(cid, f"❌ {res.get('error')}")
-                    OUTBOX_RESULT_PATH.write_text(json.dumps(results, indent=2, ensure_ascii=False), encoding="utf-8")
-        except Exception as e:
-            print(f"[Outbox error]: {e}", file=sys.stderr, flush=True)
-        time.sleep(0.4)
-
-
-def update_checker_worker(client: TelegramClient, cfg: dict) -> None:
-    """Check for new versions 30s after startup and once every 24 hours."""
-    time.sleep(30)
-    while True:
-        try:
-            import updater
-            chat_id = cfg.get("chat_id")
-            if chat_id:
-                res = updater.check_for_updates()
-                if res.get("has_update"):
-                    markup = {"inline_keyboard": [
-                        [{"text": f"🚀 Cập nhật lên v{res['latest_version']}", "callback_data": "do_update"}],
-                        [{"text": "❌ Để sau", "callback_data": "cancel_nl"}]
-                    ]}
-                    client.send_message(
-                        chat_id,
-                        f"🔔 THÔNG BÁO BẢN CẬP NHẬT MỚI: v{res['latest_version']}!\n\n"
-                        f"📝 Nội dung:\n{res.get('release_notes')}\n\n"
-                        f"👉 Bấm nút bên dưới để cập nhật tự động:",
-                        reply_markup=markup,
-                    )
-        except Exception:
-            pass
-        time.sleep(86400)
-
-
 USER_STATE: dict[int, dict] = {}
 
 
@@ -417,7 +280,7 @@ def build_home_keyboard() -> dict:
     home = Path.home()
     buttons = [
         [
-            {"text": "💽 Danh sách Ổ đĩa (/Volumes)", "callback_data": "drives"},
+            {"text": "💽 Danh sách ổ đĩa", "callback_data": "drives"},
             {"text": "☁️ Google Drive", "callback_data": "gdrive_home"},
         ],
         [
@@ -437,12 +300,12 @@ def build_home_keyboard() -> dict:
             {"text": "🎛 Điều Khiển Máy", "callback_data": "rc_panel"},
         ],
     ]
-    return {"inline_keyboard": buttons}
+    return {"inline_keyboard": buttons if IS_MAC else buttons[:3]}
 
 
 def format_drives_view() -> tuple[str, dict]:
     drives = list_drives()
-    lines = ["💽 DANH SÁCH Ổ ĐĨA TRÊN MÁY MAC:\n"]
+    lines = ["💽 DANH SÁCH Ổ ĐĨA:\n"]
     kb = []
     for d in drives:
         lines.append(
@@ -547,129 +410,72 @@ def format_dir_view(path_str: str, chat_id: int) -> tuple[str, dict]:
     return "\n".join(header), {"inline_keyboard": kb}
 
 
-def _send_gcal_setup_guide(client: TelegramClient, chat_id: int, include_status: bool = False) -> None:
-    """Hiển thị trạng thái & 2 cách bật tự động lưu Google Calendar không cần Antigravity."""
-    lines: list[str] = []
-    if include_status:
-        st = gcal_bridge.get_calendar_sync_status(nl_engine.GCALENDAR_BIN)
-        lines.append("📅 TRẠNG THÁI ĐỒNG BỘ GOOGLE CALENDAR:\n")
-        if st.get("has_webhook"):
-            lines.append("• ☁️ Google Apps Script Bridge: ✅ *ĐÃ KẾT NỐI* (Tự động cả GHI & ĐỌC trực tiếp)")
-        else:
-            lines.append("• ☁️ Google Apps Script Bridge: ⚪ Chưa cài")
-        if st.get("macos_google_cals"):
-            lines.append("• 🔄 Lịch Google trên macOS: ✅ *ĐÃ BẬT* (`" + "`, `".join(st["macos_google_cals"]) + "`)")
-        else:
-            lines.append("• 🔄 Lịch Google trên macOS: ⚪ Chưa bật đồng bộ")
-        if st.get("has_cli"):
-            lines.append("• 🤖 Antigravity gcalendar CLI: ✅ Đã cài")
-        lines.append("")
-
-    lines.extend([
-        "⚡ *2 CÁCH TỰ ĐỘNG GHI LỊCH GOOGLE 100% KHÔNG CẦN ANTIGRAVITY:*\n",
-        "1️⃣ **Cách 1 — Nhanh nhất (20 giây, 0 dòng code):**",
-        "   Mở *Cài đặt hệ thống → Tài khoản Internet → Google → Gạt BẬT mục Lịch (Calendars)*.",
-        "   Từ đó mỗi khi bạn nhắn `note lịch 20/12 ...`, bot tự ghi vào Lịch Mac và macOS tự đồng bộ 2 chiều lên Google Calendar ngay lập tức!\n",
-        "2️⃣ **Cách 2 — Dùng Google Apps Script (1 phút, Đọc & Ghi trực tiếp không cần Apple Calendar):**",
-        "   Bấm nút *Lấy mã Google Apps Script* bên dưới, deploy Web App tại `script.google.com` rồi dán đường dẫn `/exec` thẳng vào chat Telegram này.",
-    ])
-    kb = [
-        [{"text": "⚙️ Mở Cài đặt Tài khoản Google trên Mac", "callback_data": "gcal_open_mac_accounts"}],
-        [{"text": "📋 Lấy mã Google Apps Script", "callback_data": "gcal_show_script"}],
-        [{"text": "🏠 Về Menu chính", "callback_data": "home"}],
-    ]
+def _send_gcal_setup_guide(client: TelegramClient, chat_id: int) -> None:
+    status = gcal_bridge.get_calendar_sync_status()
+    lines = ["Cấu hình lịch trên máy chạy MediaTeleBot."]
+    if status["legacy_webhook"]:
+        lines.append("Phát hiện URL Apps Script kiểu cũ. Hãy vô hiệu hóa deployment đó trong Google Apps Script.")
+    if status["has_webhook"]:
+        lines.append("Đã cấu hình kết nối Google Apps Script có khóa.")
+    elif status["macos_calendar"]:
+        lines.append(f"Lịch trên macOS đã chọn: {status['macos_calendar']}")
+    else:
+        lines.append("Đang dùng lịch lưu cục bộ.")
+    kb = [[{"text": "Lấy mã Google Apps Script", "callback_data": "gcal_show_script"}]]
+    if IS_MAC:
+        kb.append([{"text": "Mở Tài khoản Internet trên Mac", "callback_data": "gcal_open_mac_accounts"}])
     client.send_message(chat_id, "\n".join(lines), reply_markup={"inline_keyboard": kb})
 
 
-def handle_message(client: TelegramClient, cfg: dict, msg: dict) -> bool:
-    """
-    Process an incoming Telegram text message.
-    Returns True if a natural-language request was queued for Antigravity AI.
-    """
-    chat_id = msg["chat"]["id"]
-    user_id = msg.get("from", {}).get("id")
-    username = msg.get("from", {}).get("username", "")
+def handle_message(client: TelegramClient, cfg: dict, msg: dict) -> None:
+    user_id = pairing.private_sender(msg)
+    if user_id is None:
+        return
+    chat_id = user_id
     text = (msg.get("text") or "").strip()
-
     if not text:
-        return False
+        return
 
-    # Bind owner on first /start if not configured yet
     owner_id = cfg.get("owner_id")
-    if owner_id is None:
-        cfg["owner_id"] = user_id
-        cfg["chat_id"] = chat_id
-        cfg["username"] = username
-        save_config(cfg)
-        owner_id = user_id
-        print(f"[🔒 Bảo mật] Đã khoá quyền điều khiển cho chủ nhân Telegram ID: {owner_id} (@{username})", flush=True)
+    if not owner_id:
+        parts = text.split()
+        paired = len(parts) == 2 and parts[0].lower() == "/pair" and update_config(
+            lambda current: current.get("bot_token") == cfg.get("bot_token") and pairing.claim(current, parts[1], msg["from"])
+        )
+        if paired:
+            client.send_message(chat_id, "✅ Đã ghép cặp máy này với tài khoản Telegram của bạn.", build_home_keyboard())
+        else:
+            client.send_message(chat_id, "Mở MediaTeleBot trên máy cần điều khiển để lấy mã. Sau đó nhắn /pair kèm mã trong chat riêng này.")
+        return
 
-    allowed_users = set()
-    if owner_id:
-        allowed_users.add(owner_id)
-    for u in cfg.get("allowed_users", []):
-        try:
-            allowed_users.add(int(u))
-        except Exception:
-            pass
+    if user_id != owner_id:
+        allowed = cfg.get("allowed_users") or []
+        if user_id in allowed:
+            handle_collaborator(client, cfg, user_id, text)
+        elif text.split()[0].lower() == "/start":
+            client.send_message(chat_id, f"Bạn chưa có quyền. Telegram ID của bạn là {user_id}.")
+        return
 
-    if user_id not in allowed_users:
-        print(f"[🚫 Người chưa được phân quyền] id={user_id} @{username}: {text[:80]}", flush=True)
-        # Phản hồi lịch sự và rõ ràng khi người lạ hoặc thợ bấm /start
-        if text.startswith("/start"):
-            owner_name = f"@{cfg.get('username')}" if cfg.get('username') else "chủ nhân"
-            alert_reply = (
-                "⛔ BẠN CHƯA ĐƯỢC PHÂN QUYỀN ĐIỀU KHIỂN MÁY MAC NÀY!\n\n"
-                f"• Con bot này đang liên kết với máy Mac của {owner_name}.\n"
-                f"• Telegram ID của bạn là: `{user_id}`\n\n"
-                "💡 ĐỂ SỬ DỤNG BOT NÀY:\n"
-                "1. Nếu đây là máy Mac của bạn: Hãy tạo Bot Token riêng bằng @BotFather và mở app 'Cài Đặt MacFileBot' trên máy của bạn để thiết lập.\n"
-                f"2. Nếu bạn là thợ/cộng sự muốn điều khiển máy Mac của {owner_name}: Hãy nhờ chủ nhân nhắn cho bot câu lệnh:\n"
-                f"   `thêm thợ {user_id}` để cấp quyền cho bạn."
-            )
-            client.send_message(chat_id, alert_reply)
-            # Thông báo cho chủ nhân
-            if cfg.get("chat_id"):
-                try:
-                    client.send_message(
-                        cfg["chat_id"],
-                        f"🚨 Thợ/Người dùng @{username or 'chưa đặt username'} (ID: `{user_id}`) vừa gửi /start vào bot của bạn.\n"
-                        f"👉 Nếu muốn cấp quyền cho người này cùng điều khiển máy, bạn hãy nhắn:\n`thêm thợ {user_id}`",
-                    )
-                except Exception:
-                    pass
-        return False
+    match = re.fullmatch(r"(thêm thợ|them tho|/allow|/revoke)\s+([0-9]{1,16})", text, re.IGNORECASE)
+    if match:
+        target = int(match[2])
+        allowed = set(cfg.get("allowed_users") or [])
+        if match[1].lower() == "/revoke":
+            allowed.discard(target)
+        elif target > 0 and target != owner_id:
+            allowed.add(target)
+        update_config(lambda current: current.update(allowed_users=sorted(allowed)) if current.get("owner_id") == user_id else None)
+        client.send_message(chat_id, "Đã cập nhật danh sách cộng tác viên. Họ chỉ dùng được /find trong các thư mục bạn chia sẻ từ máy chủ.")
+        return
 
-    # Lệnh cấp quyền thêm thợ dành riêng cho chủ nhân
-    t_lower = text.lower().strip()
-    if user_id == owner_id and (t_lower.startswith("thêm thợ ") or t_lower.startswith("them tho ") or t_lower.startswith("cấp quyền ") or t_lower.startswith("cap quyen ")):
-        parts = t_lower.split()
-        cand_id = parts[-1].strip("`'\" ")
-        if cand_id.isdigit():
-            new_uid = int(cand_id)
-            cur_allowed = cfg.get("allowed_users", [])
-            if new_uid not in cur_allowed:
-                cur_allowed.append(new_uid)
-                cfg["allowed_users"] = cur_allowed
-                save_config(cfg)
-                client.send_message(chat_id, f"✅ ĐÃ CẤP QUYỀN ĐIỀU KHIỂN CHO THỢ CÓ TELEGRAM ID: `{new_uid}`!\nBây giờ người này có thể gửi /start và tra cứu file trên máy Mac của bạn.")
-                try:
-                    client.send_message(new_uid, f"🎉 BẠN ĐÃ ĐƯỢC CHỦ NHÂN MÁY MAC CẤP QUYỀN ĐIỀU KHIỂN!\nHãy gửi lệnh /start để bắt đầu sử dụng.")
-                except Exception:
-                    pass
-            else:
-                client.send_message(chat_id, f"ℹ️ Thợ có Telegram ID `{new_uid}` đã có trong danh sách phân quyền từ trước.")
-            return False
-
-    # Always keep latest chat_id updated
-    if cfg.get("chat_id") != chat_id:
-        cfg["chat_id"] = chat_id
-        save_config(cfg)
+    if text.lower().startswith("/pair"):
+        client.send_message(chat_id, "Máy này đã gắn với tài khoản Telegram của bạn.")
+        return
 
     if text.startswith("/start") or text.startswith("/help"):
         welcome = (
             "✅ ĐÃ KẾT NỐI VỚI MÁY MAC CỦA BẠN!\n"
-            "🔒 Chế độ bảo vệ: BẬT (CẤM XOÁ FILE 100%).\n\n"
+            "🔒 Chat riêng đã ghép cặp.\n\n"
             "💬 NHẮN TIẾNG VIỆT TỰ NHIÊN HOẶC BẤM NÚT BÊN DƯỚI:\n"
             "• 📁 File & Drive: \"tìm dự án 2510\", \"up file lên drive\", \"xoá bản tải về 2510\"\n"
             "• 💬 Gửi link Zalo: \"gửi link 2510 cho Anh Nam qua zalo\"\n"
@@ -678,79 +484,46 @@ def handle_message(client: TelegramClient, cfg: dict, msg: dict) -> bool:
             "• 📅 Lịch làm việc: \"note lịch 20/12 quay sự kiện\", \"tuần này có lịch gì\"\n"
         )
         if not (cfg.get("gemini_api_key") or os.environ.get("GEMINI_API_KEY")):
-            welcome += "\n💡 Mẹo: Lấy Gemini API Key miễn phí tại https://aistudio.google.com/apikey rồi dán thẳng vào đây để mở khoá AI trò chuyện & AI Vision Click!"
+            welcome += "\nCấu hình Gemini từ MediaTeleBot trên máy chủ."
+        if not IS_MAC:
+            welcome = ("✅ MediaTeleBot đã kết nối.\nDùng /ls, /find, /cp, /mv, /drives, /gcal hoặc nhắn lệnh quản lý file và lịch. "
+                       "Điều khiển màn hình, Finder và Zalo cần macOS.")
         client.send_message(chat_id, welcome, reply_markup=build_home_keyboard())
-        return False
+        return
 
-    if text.strip().lower() in ("/update", "/version", "/capnhat", "cập nhật", "update", "kiểm tra cập nhật", "update bot", "cập nhật bot"):
-        import updater
-        client.send_message(chat_id, f"🔍 Đang kiểm tra bản cập nhật (Bản hiện tại: v{updater.CURRENT_VERSION})...")
-        res = updater.check_for_updates()
-        if res.get("has_update"):
-            markup = {"inline_keyboard": [
-                [{"text": f"🚀 Cập nhật lên v{res['latest_version']}", "callback_data": "do_update"}],
-                [{"text": "❌ Để sau", "callback_data": "cancel_nl"}]
-            ]}
-            client.send_message(
-                chat_id,
-                f"🎉 PHÁT HIỆN BẢN CẬP NHẬT MỚI: v{res['latest_version']}!\n\n"
-                f"📝 Chi tiết nâng cấp:\n{res.get('release_notes')}\n\n"
-                f"👉 Bấm nút bên dưới để cập nhật tự động:",
-                reply_markup=markup
-            )
-        elif res.get("error"):
-            client.send_message(chat_id, f"⚠️ Không thể kiểm tra máy chủ cập nhật: {res['error']}")
-        else:
-            client.send_message(chat_id, f"✅ Bạn đang sử dụng phiên bản mới nhất (v{updater.CURRENT_VERSION})!")
-        return False
+    if text.lower() in ("/update", "/version", "/capnhat"):
+        reply, markup = updater.update_message()
+        client.send_message(chat_id, reply, reply_markup=markup)
+        return
 
     if text.startswith("/drives"):
         view_text, kb = format_drives_view()
         client.send_message(chat_id, view_text, reply_markup=kb)
-        return False
+        return
 
-    # Cho phép người dùng dán trực tiếp Gemini API Key trên Telegram (nếu muốn dùng key riêng)
-    m_gem = re.match(r"^(?:/gemini|gemini|cài\s+gemini|set\s+gemini)\s+(\S+)$", text.strip(), flags=re.IGNORECASE)
-    if m_gem or (text.strip().startswith("AIzaSy") and len(text.strip().split()) == 1 and len(text.strip()) >= 35):
-        new_key = m_gem.group(1).strip() if m_gem else text.strip()
-        cfg["gemini_api_key"] = new_key
-        save_config(cfg)
-        client.send_message(
-            chat_id,
-            "✅ ĐÃ CẬP NHẬT MÃ GEMINI API KEY THÀNH CÔNG!\n"
-            "🤖 Bây giờ tôi có thể hiểu mọi ngữ cảnh câu lệnh tự nhiên và trò chuyện mọi chủ đề cùng bạn."
-        )
-        return False
-
-    # Kết nối trực tiếp Google Calendar qua Apps Script Webhook URL hoặc xem cài đặt /gcal
-    m_gcal_url = re.match(
-        r"^(?:/gcal\s+)?(https://script\.google\.com/(?:a/macros/[^/]+/)?macros/s/[A-Za-z0-9_\-]+/exec\S*)$",
-        text.strip(),
-        flags=re.IGNORECASE,
-    )
-    if m_gcal_url:
-        raw_url = m_gcal_url.group(1).strip()
-        client.send_message(chat_id, "⏳ Đang kiểm tra kết nối tới Google Apps Script của bạn...")
-        res = gcal_bridge.save_webhook_url(raw_url)
-        if res.get("ok"):
-            cfg["gcal_webhook_url"] = res["url"]
-            client.send_message(chat_id, res["reply"])
-        else:
-            client.send_message(chat_id, res.get("error", "❌ Không kết nối được Google Calendar."))
-        return False
+    if re.search(r"(?:^/(?:gemini|gcal)\s+|AIza[0-9A-Za-z_-]{35}|https://script\.google\.com/)", text, re.IGNORECASE):
+        client.send_message(chat_id, "Hãy nhập khóa Gemini và thông tin kết nối lịch trực tiếp trên máy chủ. Nếu đã dán khóa vào Telegram, hãy thu hồi khóa đó.")
+        return
 
     if text.strip().lower() in (
         "/gcal", "cài đặt lịch google", "cai dat lich google",
         "kết nối lịch google", "ket noi lich google", "cài lịch google", "cai lich google"
     ):
-        _send_gcal_setup_guide(client, chat_id, include_status=True)
-        return False
+        _send_gcal_setup_guide(client, chat_id)
+        return
 
     if text.startswith("/ls"):
         arg = text[3:].strip() or "~"
         view_text, kb = format_dir_view(arg, chat_id)
         client.send_message(chat_id, view_text, reply_markup=kb)
-        return False
+        return
+
+    if text == "/size" or text.startswith("/size "):
+        target = text[5:].strip() or "~"
+        result = safe_fs.get_folder_size(target)
+        reply = f"{result['path']} — {result['size_human']}" if result.get("ok") else result["error"]
+        client.send_message(chat_id, reply)
+        return
 
     if text.startswith("/find"):
         parts = text[5:].strip().split(" in ", 1)
@@ -758,15 +531,15 @@ def handle_message(client: TelegramClient, cfg: dict, msg: dict) -> bool:
         root = parts[1].strip() if len(parts) > 1 else "~"
         if not kw:
             client.send_message(chat_id, "ℹ️ Cú pháp: /find <từ_khoá> hoặc /find <từ_khoá> in <thư_mục>")
-            return False
+            return
         res = search_files(kw, root)
         if not res.get("ok"):
             client.send_message(chat_id, f"❌ {res.get('error')}")
-            return False
+            return
         matches = res.get("matches", [])
         if not matches:
             client.send_message(chat_id, f"🔍 Không tìm thấy file nào khớp '{kw}' trong {res['root']}.")
-            return False
+            return
         lines = [f"🔍 Tìm thấy {len(matches)} kết quả cho '{kw}':\n"]
         kb = []
         for m in matches[:15]:
@@ -775,7 +548,7 @@ def handle_message(client: TelegramClient, cfg: dict, msg: dict) -> bool:
             pid = register_path(m["path"])
             kb.append([{"text": f"{icon} {Path(m['path']).name}", "callback_data": f"open:{pid}"}])
         client.send_message(chat_id, "\n".join(lines), reply_markup={"inline_keyboard": kb})
-        return False
+        return
 
     if text.startswith("/cp ") or text.startswith("/mv "):
         is_copy = text.startswith("/cp ")
@@ -783,7 +556,7 @@ def handle_message(client: TelegramClient, cfg: dict, msg: dict) -> bool:
         if "->" not in body:
             cmd = "/cp" if is_copy else "/mv"
             client.send_message(chat_id, f"ℹ️ Cú pháp: {cmd} <đường_dẫn_nguồn> -> <đường_dẫn_đích>")
-            return False
+            return
         src_str, dst_str = [p.strip() for p in body.split("->", 1)]
         res = safe_copy(src_str, dst_str) if is_copy else safe_move(src_str, dst_str)
         if res.get("ok"):
@@ -794,52 +567,41 @@ def handle_message(client: TelegramClient, cfg: dict, msg: dict) -> bool:
             )
         else:
             client.send_message(chat_id, f"❌ {res.get('error')}")
-        return False
-
-    # Hot-reload safe_fs and nl_engine while preserving PENDING_CONFIRM and LAST_CONTEXT state
-    print(f"[📩 Yêu cầu từ Telegram]: {text}", flush=True)
-    saved_pending = dict(getattr(nl_engine, "PENDING_CONFIRM", {}))
-    saved_context = dict(getattr(nl_engine, "LAST_CONTEXT", {}))
-    importlib.reload(safe_fs)
-    importlib.reload(nl_engine)
-    nl_engine.PENDING_CONFIRM.update(saved_pending)
-    nl_engine.LAST_CONTEXT.update(saved_context)
+        return
 
     nl_res = nl_engine.parse_and_execute_nl(text, chat_id=chat_id)
     if nl_res.get("handled"):
         send_nl_response(client, chat_id, nl_res)
-        print(f"[✅ Đã xử lý tự động]: {nl_res.get('reply', '')[:120]}...", flush=True)
-        return False
+    else:
+        client.send_message(chat_id, "Tôi chưa nhận ra lệnh này. Nhắn /help để xem các lệnh có sẵn.")
+    return
 
-    # Unrecognized complex request -> Queue for Antigravity AI Assistant!
-    entry = {
-        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
-        "chat_id": chat_id,
-        "user_id": user_id,
-        "text": text,
-    }
-    with open(INBOX_PATH, "a", encoding="utf-8") as f:
-        f.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
-    client.send_message(
-        chat_id,
-        f"🤖 Đã chuyển yêu cầu nâng cao cho Antigravity xử lý:\n\"{text}\"\n⏳ Đang thực hiện trên máy Mac..."
-    )
-    return True
+def handle_collaborator(client: TelegramClient, cfg: dict, chat_id: int, text: str) -> None:
+    keyword = text[6:].strip() if text.startswith("/find ") else ""
+    roots = cfg.get("shared_roots") or []
+    if not keyword or not roots:
+        client.send_message(chat_id, "Cộng tác viên có thể dùng /find <từ khóa> trong các thư mục chủ máy đã chia sẻ.")
+        return
+    results = []
+    for root in roots:
+        results.extend(safe_fs.search_shared(keyword, root, limit=15 - len(results)))
+        if len(results) >= 15:
+            break
+    client.send_message(chat_id, "\n".join(results)[:3500] or "Không tìm thấy trong các thư mục được chia sẻ.")
 
 
 def handle_callback(client: TelegramClient, cfg: dict, cb: dict) -> None:
     cb_id = cb["id"]
-    user_id = cb.get("from", {}).get("id")
-    msg = cb.get("message", {})
-    chat_id = msg.get("chat", {}).get("id")
-    data = cb.get("data", "")
-
-    owner_id = cfg.get("owner_id")
-    if owner_id is not None and user_id != owner_id:
+    user_id = pairing.private_sender(cb.get("message") or {}, cb.get("from") or {})
+    chat_id = user_id
+    data = cb.get("data") or ""
+    if user_id is None or user_id != cfg.get("owner_id"):
         client.answer_callback(cb_id, "⛔ Không có quyền.")
         return
-
+    if not IS_MAC and data.startswith(("rc_", "trash_", "restore_trash:", "zalo_", "apps_", "launch_app:", "evict:", "gcal_open_mac")):
+        client.answer_callback(cb_id, "Tính năng này cần macOS.")
+        return
     client.answer_callback(cb_id)
 
     if data == "cancel_nl":
@@ -849,55 +611,15 @@ def handle_callback(client: TelegramClient, cfg: dict, cb: dict) -> None:
         return
 
     if data == "do_update":
-        import updater
-        client.send_message(chat_id, "⏳ Đang tải và áp dụng bản cập nhật từ máy chủ...")
-        res = updater.check_for_updates()
-        if not res.get("has_update") or not res.get("manifest"):
-            client.send_message(chat_id, "⚠️ Không tìm thấy gói cập nhật hợp lệ.")
-            return
-        up_res = updater.perform_update(res["manifest"])
-        if up_res.get("ok"):
-            client.send_message(
-                chat_id,
-                f"🎉 ĐÃ CẬP NHẬT THÀNH CÔNG LÊN v{up_res.get('version')}!\n🔄 Đang khởi động lại trợ lý..."
-            )
-            time.sleep(1)
-            updater.restart_service()
-        else:
-            client.send_message(chat_id, f"❌ Lỗi cập nhật: {up_res.get('error')}")
+        client.send_message(chat_id, "Mở trang phát hành để tải bản cập nhật.", reply_markup=updater.release_button())
         return
 
     if data == "zalo_send":
         pending = safe_fs.pop_zalo_pending()
-        if not pending:
-            client.send_message(chat_id, "⚠️ Không có tin nhắn Zalo nào đang chờ gửi hoặc tin nhắn đã hết hạn (quá 1 giờ).")
-            return
-
-        to = pending.get("to", "")
-        text_to_send = pending.get("text", "")
-        client.send_message(chat_id, f"🚀 Đang mở Zalo trên máy Mac và gửi tin nhắn cho: {to}...")
-
-        try:
-            import zalo_sender
-            result = zalo_sender.send_zalo_message(to, text_to_send, really_send=True)
-            if result.get("ok"):
-                client.send_message(
-                    chat_id,
-                    f"✅ ĐÃ GỬI ZALO THÀNH CÔNG CHO: {to}\n\n📝 Nội dung đã gửi:\n{text_to_send}"
-                )
-            else:
-                err = result.get("error", "Lỗi không xác định")
-                client.send_message(
-                    chat_id,
-                    f"❌ KHÔNG THỂ GỬI QUA ZALO:\n{err}\n\n"
-                    f"💡 Mẹo khắc phục:\n"
-                    f"1. Đảm bảo app Zalo trên máy Mac đang mở và đã đăng nhập.\n"
-                    f"2. Đảm bảo màn hình không bị khóa.\n"
-                    f"3. Cấp quyền Trợ năng (Accessibility) cho Python tại:\n"
-                    f"   Cài đặt hệ thống ➔ Quyền riêng tư & Bảo mật ➔ Trợ năng (Accessibility) ➔ Bật Python."
-                )
-        except Exception as e:
-            client.send_message(chat_id, f"❌ Lỗi khi thực hiện gửi Zalo: {e}")
+        if pending:
+            client.send_message(chat_id, f"Bản nháp cho {pending['to']} (kiểm tra người nhận trong Zalo trước khi gửi):\n\n{pending['text']}")
+        else:
+            client.send_message(chat_id, "Không còn bản nháp Zalo. Hãy tạo lại từ link Drive.")
         return
 
     if data == "home":
@@ -1174,7 +896,7 @@ def handle_callback(client: TelegramClient, cfg: dict, cb: dict) -> None:
         return
 
     if data == "gcal_setup_guide":
-        _send_gcal_setup_guide(client, chat_id, include_status=True)
+        _send_gcal_setup_guide(client, chat_id)
         return
 
     if data == "gcal_open_mac_accounts":
@@ -1192,13 +914,11 @@ def handle_callback(client: TelegramClient, cfg: dict, cb: dict) -> None:
 
     if data == "gcal_show_script":
         guide = (
-            "📋 CÁCH CÀI GOOGLE APPS SCRIPT (1 PHÚT — GHI & ĐỌC LỊCH TRỰC TIẾP):\n\n"
-            "1. Mở https://script.google.com → Bấm 'Dự án mới' (New project).\n"
-            "2. Xoá hết code mẫu và dán toàn bộ đoạn code ở tin nhắn ngay dưới vào.\n"
-            "3. Bấm 'Triển khai' (Deploy) → 'Tạo mục triển khai mới' (New deployment) → Loại: 'Ứng dụng web' (Web app):\n"
-            "   • Thực thi dưới danh nghĩa (Execute as): Tôi (Me)\n"
-            "   • Ai có quyền truy cập (Who has access): Bất kỳ ai (Anyone)\n"
-            "4. Bấm Triển khai → Cấp quyền Google Calendar → Copy đường dẫn Web app (/exec) và DÁN THẲNG VÀO CHAT NÀY là xong!"
+            "Bật Google Calendar bằng Apps Script:\n"
+            "1. Tạo dự án mới trong script.google.com và dán mã bên dưới.\n"
+            "2. Trong Project Settings → Script Properties, thêm MEDIATELEBOT_SECRET với một khóa ngẫu nhiên ít nhất 32 ký tự.\n"
+            "3. Triển khai Web App bằng tài khoản chủ lịch.\n"
+            "4. Nhập URL /exec và khóa trực tiếp trong MediaTeleBot trên máy chủ."
         )
         client.send_message(chat_id, guide)
         client.send_message(chat_id, gcal_bridge.APPS_SCRIPT_TEMPLATE)
@@ -1215,16 +935,19 @@ def handle_callback(client: TelegramClient, cfg: dict, cb: dict) -> None:
                 is_copy = op in ("qcp", "qgd")
                 sz_info = safe_fs.get_folder_size(src_path)
                 sz_str = sz_info.get("size_human", "?") if sz_info.get("ok") else "?"
-                res = safe_fs.safe_copy(src_path, dst_path) if is_copy else safe_fs.safe_move(src_path, dst_path)
+                if op == "qgd":
+                    res = safe_fs.copy_to_drive_path(src_path, dst_path)
+                else:
+                    res = safe_fs.safe_copy(src_path, dst_path) if is_copy else safe_fs.safe_move(src_path, dst_path)
                 if res.get("ok"):
                     if op == "qgd":
                         client.send_message(
                             chat_id,
-                            f"☁️ ĐÃ UPLOAD LÊN GOOGLE DRIVE THÀNH CÔNG!\n"
+                            f"☁️ Đã chép vào thư mục đồng bộ Google Drive.\n"
                             f"• Tên: {Path(src_path).name} ({sz_str})\n"
                             f"• Nguồn: {res['src']}\n"
                             f"• Đích Google Drive: {res['dst']}\n"
-                            f"🔄 Google Drive trên máy Mac đang tự động đồng bộ lên mây!"
+                            f"🔄 Kiểm tra trạng thái đồng bộ trong Google Drive."
                         )
                     else:
                         act_vn = "SAO CHÉP" if is_copy else "CHUYỂN (DỜI)"
@@ -1329,7 +1052,7 @@ def main():
     # Subcommand: send a message back to the owner on Telegram
     if len(args) >= 2 and args[0] == "--send":
         token = cfg.get("bot_token")
-        chat_id = cfg.get("chat_id")
+        chat_id = cfg.get("owner_id")
         if not token or not chat_id:
             print("Chưa có bot_token hoặc chat_id trong config.json", file=sys.stderr)
             sys.exit(1)
@@ -1375,23 +1098,6 @@ def main():
         print(json.dumps(res, indent=2, ensure_ascii=False))
         return
 
-    if len(args) >= 1 and args[0] == "--install-service":
-        import shutil
-        import subprocess
-        plist_src = BASE_DIR / "com.thienung.telegramfilebot.plist"
-        launch_agents_dir = Path.home() / "Library" / "LaunchAgents"
-        launch_agents_dir.mkdir(parents=True, exist_ok=True)
-        plist_dst = launch_agents_dir / "com.thienung.telegramfilebot.plist"
-        shutil.copy2(plist_src, plist_dst)
-        uid = os.getuid()
-        subprocess.run(["launchctl", "bootout", f"gui/{uid}", str(plist_dst)], capture_output=True)
-        res = subprocess.run(["launchctl", "bootstrap", f"gui/{uid}", str(plist_dst)], capture_output=True, text=True)
-        if res.returncode != 0:
-            subprocess.run(["launchctl", "unload", str(plist_dst)], capture_output=True)
-            subprocess.run(["launchctl", "load", "-w", str(plist_dst)], check=True)
-        print(f"✅ Đã cài đặt và khởi chạy dịch vụ chạy ngầm 24/7 tại: {plist_dst}")
-        return
-
     if len(args) >= 1 and args[0] == "--enable-clamshell":
         import subprocess
         apple_script = (
@@ -1419,90 +1125,74 @@ def main():
             sys.exit(1)
         return
 
-    # Mode: exit after receiving 1 natural-language task so Antigravity wakes up
-    exit_on_nl_task = "--listen-for-ai" in args
-
     try:
         signal.signal(signal.SIGHUP, signal.SIG_IGN)
-    except Exception:
+    except AttributeError:
         pass
 
-    lock_file_path = BASE_DIR / "bot.lock"
-    lock_fp = None
     try:
-        lock_fp = open(lock_file_path, "a+", encoding="utf-8")
-        fcntl.flock(lock_fp.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-        lock_fp.seek(0)
-        lock_fp.truncate()
-        lock_fp.write(str(os.getpid()))
-        lock_fp.flush()
+        with lock_instance(BASE_DIR / "bot.lock"):
+            run_polling()
     except OSError:
-        print("ℹ️ Một tiến trình bot.py khác đang chạy (đã giữ bot.lock). Thoát để tránh trùng lặp 409.", flush=True)
-        sys.exit(0)
-
-    token = os.environ.get("TELEGRAM_BOT_TOKEN") or cfg.get("bot_token")
-    if not token:
-        print("Chưa cấu hình TELEGRAM_BOT_TOKEN trong config.json", file=sys.stderr)
+        print("Không thể chạy bot. Kiểm tra quyền thư mục dữ liệu hoặc tiến trình đang chạy.", file=sys.stderr)
         sys.exit(1)
 
+
+def run_polling() -> None:
+    cfg = load_config()
+    token = os.environ.get("TELEGRAM_BOT_TOKEN") or cfg.get("bot_token")
+    if not token:
+        print("Mở trình cài đặt MediaTeleBot để nhập bot token.", file=sys.stderr)
+        return
     if cfg.get("bot_token") != token:
-        cfg["bot_token"] = token
-        save_config(cfg)
+        print("Token môi trường khác token cài đặt. Hãy cấu hình token mới từ trình cài đặt trước.", file=sys.stderr)
+        return
 
+    update_config(lambda current: pairing.configure_token(current, token) if current.get("bot_token") == token else None)
     client = TelegramClient(token)
-    try:
-        client.call("deleteWebhook", {"drop_pending_updates": False}, timeout=10)
-    except Exception:
-        pass
-
-    me = client.call("getMe")
-    bot_username = me.get("result", {}).get("username", "Bot")
-    print(f"🚀 Telegram Bot @{bot_username} đang hoạt động! (Chế độ cấm xoá file: BẬT)", flush=True)
-
-    threading.Thread(target=write_system_snapshot, daemon=True).start()
-    try:
-        import gdrive_offload
-        resumed = gdrive_offload.resume_pending_jobs()
-        if resumed > 0:
-            print(f"🔄 Đã khôi phục {resumed} tác vụ tự động xoá bản tải về Google Drive.", flush=True)
-    except Exception as e:
-        print(f"⚠️ Lỗi khôi phục tác vụ xoá bản tải về: {e}", flush=True)
-    t_outbox = threading.Thread(target=outbox_worker, args=(client, cfg), daemon=True)
-    t_outbox.start()
-    t_update = threading.Thread(target=update_checker_worker, args=(client, cfg), daemon=True)
-    t_update.start()
-
-    # (Đã bỏ phát lại inbox.jsonl khi khởi động: trước đây nó gửi lại các lệnh cũ mỗi lần restart.)
-    try:
-        INBOX_PATH.write_text("", encoding="utf-8")
-    except Exception:
-        pass
-
-    offset = cfg.get("last_update_id", 0)
-    while True:
+    if not client.call("getMe").get("ok"):
+        raise RuntimeError("Telegram không xác nhận bot token.")
+    print("MediaTeleBot đang chạy.", flush=True)
+    while not (BASE_DIR / "stop.request").exists():
         try:
-            cfg_latest = load_config()
-            if cfg_latest:
-                for k in ("owner_id", "chat_id", "username", "allowed_users", "default_gdrive_folder"):
-                    if k in cfg_latest:
-                        cfg[k] = cfg_latest[k]
-            resp = client.call("getUpdates", {"offset": offset, "timeout": 25}, timeout=35)
-            updates = resp.get("result", [])
-            for upd in updates:
-                offset = upd["update_id"] + 1
-                cfg["last_update_id"] = offset
-                save_config(cfg)
+            cfg = load_config()
+            if cfg.get("bot_token") != token:
+                print("Token đã thay đổi. Hãy mở lại MediaTeleBot.", flush=True)
+                return
+            response = client.call("getUpdates", {
+                "offset": cfg.get("last_update_id", 0), "timeout": 25,
+                "allowed_updates": ["message", "callback_query"],
+            })
+            for update in response.get("result", []):
+                cfg = load_config()
+                if cfg.get("bot_token") != token:
+                    return
+                def record_offset(current):
+                    if current.get("bot_token") != token:
+                        return False
+                    current["last_update_id"] = update["update_id"] + 1
+                    return True
 
-                if "message" in upd:
-                    handle_message(client, cfg, upd["message"])
-                elif "callback_query" in upd:
-                    handle_callback(client, cfg, upd["callback_query"])
+                if not update_config(record_offset):
+                    return
+                try:
+                    if "message" in update:
+                        handle_message(client, cfg, update["message"])
+                    elif "callback_query" in update:
+                        handle_callback(client, cfg, update["callback_query"])
+                finally:
+                    mac_remote.clear_capture()
         except KeyboardInterrupt:
             break
-        except Exception as e:
-            print(f"[Cảnh báo kết nối]: {e}", file=sys.stderr, flush=True)
+        except Exception as exc:
+            # Errors may contain URLs with bot tokens or private calendar links.
+            print(f"Lỗi khi xử lý Telegram ({type(exc).__name__}).", file=sys.stderr, flush=True)
             time.sleep(3)
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except (OSError, ValueError, RuntimeError) as exc:
+        print(f"MediaTeleBot không khởi động được ({type(exc).__name__}).", file=sys.stderr)
+        sys.exit(1)

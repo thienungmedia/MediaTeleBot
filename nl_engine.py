@@ -3,7 +3,7 @@ from __future__ import annotations
 """
 Natural Language Engine (Vietnamese) for Safe Mac File Manager.
 Supports:
-- Default Google Drive upload destination: THIEN UNG PRODUCTION
+- Configurable Google Drive upload destination
 - Automatic & on-demand Google Drive Share Link extraction ("Lấy link file test.mp4...", "up ... lên drive và lấy link")
 - Flexible verbs & prepositions ("chuyển", "dời", "ra", "ra lại", "qua", "sang", "vào"...)
 - Word-order-independent token matching ("a bin decor" <-> "2410 DECOR A BIN")
@@ -12,15 +12,16 @@ Supports:
 import json
 import os
 import re
-import shutil
+import subprocess
 import time
 import unicodedata
 from pathlib import Path
+from runtime import BASE_DIR, IS_MAC, mounted_roots, read_config, write_private_json
+
 import gcal_bridge
 import mac_remote
 import safe_fs
 from safe_fs import (
-    DEFAULT_GDRIVE_SUBFOLDER,
     get_default_gdrive_subfolder,
     get_default_gdrive_folder_info,
     set_default_gdrive_folder,
@@ -230,7 +231,7 @@ def find_best_matches(
         if parent_dir and parent_dir.exists():
             search_roots = [parent_dir]
         else:
-            search_roots = [home / "Desktop", home / "Downloads", home / "Documents", Path("/Volumes/FILM DATA")]
+            search_roots = [home / "Desktop", home / "Downloads", home / "Documents", *mounted_roots()]
     elif effective_root_hint in ("desktop", "màn hình", "man hinh"):
         search_roots = [home / "Desktop"]
     elif effective_root_hint in ("download", "downloads", "tải về", "tai ve"):
@@ -238,7 +239,7 @@ def find_best_matches(
     elif effective_root_hint in ("document", "documents"):
         search_roots = [home / "Documents"]
     elif effective_root_hint and "film" in effective_root_hint:
-        search_roots = [Path("/Volumes/FILM DATA")]
+        search_roots = [Path(raw) for raw in read_config().get("media_roots", [])] or mounted_roots()
     elif effective_root_hint and "drive" in effective_root_hint:
         search_roots = []
         gd_root = find_google_drive_root(auto_launch=False)
@@ -262,11 +263,8 @@ def find_best_matches(
             if def_sub.exists():
                 search_roots.append(def_sub)
             search_roots.append(gd_root)
-        volumes = Path("/Volumes")
-        if volumes.exists():
-            for v in sorted(volumes.iterdir()):
-                if not is_ignored_dir(v.name):
-                    search_roots.append(v)
+        search_roots.extend(Path(raw) for raw in read_config().get("media_roots", []))
+        search_roots.extend(v for v in mounted_roots() if not is_ignored_dir(v.name))
 
     seen_paths = set()
     tier1_exact = []
@@ -461,29 +459,26 @@ def resolve_destination(dest_phrase: str) -> Path | None:
     if d_norm in ("documents", "document", "tai lieu"):
         return home / "Documents"
 
-    volumes = Path("/Volumes")
-    if volumes.exists():
-        for v in volumes.iterdir():
-            if is_ignored_dir(v.name):
-                continue
-            v_norm = strip_accents(v.name)
-            if d_norm == v_norm or d_norm == f"o dia {v_norm}" or d_norm == f"o cung {v_norm}":
-                return v
-            if "/" in d_clean and v_norm in d_norm:
-                sub = d_clean.split("/", 1)[1].strip()
-                return resolve_subfolder_fuzzy(v, sub)
+    for v in mounted_roots():
+        if is_ignored_dir(v.name):
+            continue
+        v_norm = strip_accents(v.name or v.drive)
+        if d_norm == v_norm or d_norm == f"o dia {v_norm}" or d_norm == f"o cung {v_norm}":
+            return v
+        if "/" in d_clean and v_norm in d_norm:
+            sub = d_clean.split("/", 1)[1].strip()
+            return resolve_subfolder_fuzzy(v, sub)
 
     matches = find_best_matches(dest_phrase, force_type="dir")
     if matches:
         return Path(matches[0]["path"])
 
-    if volumes.exists():
-        for v in volumes.iterdir():
-            if is_ignored_dir(v.name):
-                continue
-            v_norm = strip_accents(v.name)
-            if v_norm in d_norm or d_norm in v_norm:
-                return v
+    for v in mounted_roots():
+        if is_ignored_dir(v.name):
+            continue
+        v_norm = strip_accents(v.name or v.drive)
+        if v_norm in d_norm or d_norm in v_norm:
+            return v
 
     return None
 
@@ -674,10 +669,9 @@ def _try_zalo_dispatch(t: str, chat_id: int) -> dict | None:
     LAST_CONTEXT.setdefault(chat_id, {})["last_item"] = target
 
     if is_chain:
-        safe_fs._write_json(safe_fs.ZALO_AFTER_UPLOAD_PATH, {"to": recipient, "ts": time.time()})
-        res = _prepare_gdrive_confirmation(target, DEFAULT_GDRIVE_SUBFOLDER, chat_id)
+        res = _prepare_gdrive_confirmation(target, "", chat_id)
         if res.get("handled") and "reply" in res:
-            res["reply"] += f"\n\n💬 *Lưu ý:* Sau khi tải lên và Google Drive đồng bộ link xong, bot sẽ tự động tạo nút bấm gửi Zalo cho *{recipient}*!"
+            res["reply"] += f"\n\n💬 *Lưu ý:* Khi đã có link Drive, hãy soạn lại bản nháp cho {recipient}."
         return res
 
     # 1. Tìm trên Google Drive trước (ưu tiên kết quả vừa tìm được ở tin nhắn trước nếu dùng đại từ nối tiếp)
@@ -695,7 +689,6 @@ def _try_zalo_dispatch(t: str, chat_id: int) -> dict | None:
         LAST_CONTEXT.setdefault(chat_id, {})["last_item"] = m.get("name", target)
         if m.get("is_synced") and m.get("url"):
             zalo_text = safe_fs.build_zalo_text(m["name"], m["url"])
-            safe_fs.set_zalo_pending(recipient, zalo_text)
             icon = "📁 Thư mục" if m.get("is_dir") else "📄 File"
             parent_info = f"\n📂 Nằm trong: {m.get('parent_name')}" if m.get("parent_name") else ""
             return {
@@ -706,30 +699,27 @@ def _try_zalo_dispatch(t: str, chat_id: int) -> dict | None:
                     f"• {icon}: {m['name']} ({m.get('size', '-')}){parent_info}\n"
                     f"• Link Google Drive:\n{m['url']}\n\n"
                     f"📝 Nội dung tin nhắn sẽ gửi:\n{zalo_text}\n\n"
-                    f"👉 Bấm nút bên dưới để gửi tin nhắn này qua Zalo:"
+                    f"Sao chép bản nháp và tự kiểm tra cuộc trò chuyện trong Zalo trước khi gửi."
                 ),
-                "reply_markup": safe_fs.zalo_confirm_markup(recipient),
             }
         else:
-            safe_fs._write_json(safe_fs.ZALO_AFTER_UPLOAD_PATH, {"to": recipient, "ts": time.time()})
             return {
                 "handled": True,
                 "reply": (
                     f"⏳ Mục '{m['name']}' đang được Google Drive đồng bộ lên mây.\n"
-                    f"Ngay khi đồng bộ xong 100%, tôi sẽ tạo link và gửi nút bấm xác nhận gửi Zalo cho *{recipient}*!"
+                    f"Hãy soạn lại bản nháp cho {recipient} sau khi Drive đồng bộ."
                 ),
             }
 
     # 2. Chưa có trên Google Drive, tìm trên máy Mac / SOURCE / FILM DATA
     local_matches = find_best_matches(target)
     if local_matches:
-        safe_fs._write_json(safe_fs.ZALO_AFTER_UPLOAD_PATH, {"to": recipient, "ts": time.time()})
-        res = _prepare_gdrive_confirmation(target, DEFAULT_GDRIVE_SUBFOLDER, chat_id)
+        res = _prepare_gdrive_confirmation(target, "", chat_id)
         if res.get("handled") and "reply" in res:
             res["reply"] = (
                 f"ℹ️ '{target}' chưa có trên Google Drive, nhưng tôi đã tìm thấy trên máy Mac!\n\n"
                 f"{res['reply']}\n\n"
-                f"💬 *Lưu ý:* Sau khi tải lên và có link Google Drive, bot sẽ tự động tạo nút gửi Zalo cho *{recipient}*."
+                f"💬 *Lưu ý:* Khi đã có link Drive, hãy soạn lại bản nháp cho {recipient}."
             )
         return res
 
@@ -1687,7 +1677,7 @@ def _try_app_dispatch(t: str, chat_id: int) -> dict | None:
     return None
 
 
-def parse_and_execute_nl(text: str, chat_id: int = 0, _from_llm: bool = False) -> dict:
+def parse_and_execute_nl(text: str, chat_id: int = 0) -> dict:
     """Analyze natural Vietnamese command and return confirmation prompt or execute action."""
     t = text.strip()
     t_lower = t.lower()
@@ -1727,18 +1717,21 @@ def parse_and_execute_nl(text: str, chat_id: int = 0, _from_llm: bool = False) -
             is_gdrive = pending.get("is_gdrive", False)
             sz_info = get_folder_size(chosen_item["path"])
             sz_str = sz_info.get("size_human", "?") if sz_info.get("ok") else "?"
-            res = safe_copy(chosen_item["path"], dst_path) if is_copy else safe_move(chosen_item["path"], dst_path)
+            if is_gdrive:
+                res = safe_fs.copy_to_drive_path(chosen_item["path"], dst_path)
+            else:
+                res = safe_copy(chosen_item["path"], dst_path) if is_copy else safe_move(chosen_item["path"], dst_path)
             if res.get("ok"):
                 if is_gdrive:
                     dst_folder_name = Path(res["dst"]).parent.name if Path(res["dst"]).is_file() else Path(res["dst"]).name
                     return {
                         "handled": True,
                         "reply": (
-                            f"☁️ ĐÃ UPLOAD LÊN GOOGLE DRIVE ({dst_folder_name})!\n"
+                            f"☁️ Đã chép vào thư mục đồng bộ Google Drive ({dst_folder_name}).\n"
                             f"• File/Thư mục: {chosen_item['name']} ({sz_str})\n"
                             f"• Nguồn: {res['src']}\n"
                             f"• Đích Google Drive: {res['dst']}\n"
-                            f"🔗 Đang lấy Link Google Drive để gửi khách..."
+                            "Kiểm tra trạng thái đồng bộ và quyền chia sẻ trong Google Drive."
                         ),
                     }
                 act_vn = "SAO CHÉP" if is_copy else "CHUYỂN (DỜI)"
@@ -1770,25 +1763,8 @@ def parse_and_execute_nl(text: str, chat_id: int = 0, _from_llm: bool = False) -
     # 0.1 Check for updates: "cập nhật", "update", "kiểm tra bản mới", "có bản cập nhật không"
     if t_norm in ("cap nhat", "update", "kiem tra cap nhat", "kiem tra ban moi", "co ban moi khong", "update bot", "cap nhat bot"):
         import updater
-        res = updater.check_for_updates()
-        if res.get("has_update"):
-            markup = {"inline_keyboard": [
-                [{"text": f"🚀 Cập nhật lên v{res['latest_version']}", "callback_data": "do_update"}],
-                [{"text": "❌ Để sau", "callback_data": "cancel_nl"}]
-            ]}
-            return {
-                "handled": True,
-                "reply": (
-                    f"🎉 PHÁT HIỆN BẢN CẬP NHẬT MỚI: v{res['latest_version']}!\n\n"
-                    f"📝 Chi tiết nâng cấp:\n{res.get('release_notes')}\n\n"
-                    f"👉 Bấm nút bên dưới để cập nhật tự động:"
-                ),
-                "reply_markup": markup,
-            }
-        elif res.get("error"):
-            return {"handled": True, "reply": f"⚠️ Không thể kiểm tra máy chủ cập nhật: {res['error']}"}
-        else:
-            return {"handled": True, "reply": f"✅ Bạn đang sử dụng phiên bản mới nhất (v{updater.CURRENT_VERSION})!"}
+        reply, markup = updater.update_message()
+        return {"handled": True, "reply": reply, "reply_markup": markup}
 
     # 0.2 View or Set Default Google Drive Upload Folder:
     # Commands: /setfolder, /thumuc, /folder, /getfolder
@@ -1895,25 +1871,11 @@ def parse_and_execute_nl(text: str, chat_id: int = 0, _from_llm: bool = False) -
             )
         return {"handled": True, "reply": "\n".join(lines)}
 
-    # 0.35 Xoá bản tải về Google Drive / Kiểm tra đồng bộ / Cài đặt tự động / Chặn xoá file thật
-    offload_res = _try_gdrive_offload_dispatch(t, chat_id)
-    if offload_res:
-        return offload_res
-
-    # 0.36 Kiểm tra Thùng rác (Trash)
-    trash_res = _try_trash_dispatch(t, chat_id)
-    if trash_res:
-        return trash_res
-
-    # 0.365 Chụp ảnh màn hình, AI Vision Click & Điều khiển máy Mac từ xa
-    remote_res = _try_remote_control_dispatch(t, chat_id)
-    if remote_res:
-        return remote_res
-
-    # 0.37 Mở Ứng Dụng (Apps) / Danh sách phần mềm
-    app_res = _try_app_dispatch(t, chat_id)
-    if app_res:
-        return app_res
+    if IS_MAC:
+        for handler in (_try_gdrive_offload_dispatch, _try_trash_dispatch, _try_remote_control_dispatch, _try_app_dispatch):
+            result = handler(t, chat_id)
+            if result:
+                return result
 
     # 0.4 Xem lịch: "ngày 25.10 tôi có bao nhiêu lịch", "hôm nay có lịch gì", "tuần này có lịch gì"
     q_res = _try_calendar_query(t)
@@ -2100,71 +2062,56 @@ def parse_and_execute_nl(text: str, chat_id: int = 0, _from_llm: bool = False) -
         sr = _smart_search_reply(find_match.group(1), chat_id)
         if sr.get("matches"):
             LAST_CONTEXT.setdefault(chat_id, {})["last_item"] = sr["matches"][0]["name"]
-        if _from_llm or "Không tìm thấy mục nào" not in sr.get("reply", ""):
+        if "Không tìm thấy mục nào" not in sr.get("reply", ""):
             return sr
 
     # 9. Trí tuệ nhân tạo Gemini tích hợp sẵn:
     #    - Dịch mọi ngữ cảnh nói tự nhiên / tiếng lóng / nối tiếp câu trước sang chuẩn lệnh máy (CMD:)
     #    - Hoặc trò chuyện tự nhiên "trên trời dưới đất" (CHAT:)
-    if not _from_llm:
-        # Nếu người dùng gõ trực tiếp mã dự án / tên file ngắn (vd: "psc hằng cần", "2510") không chứa từ khoá tán gẫu
-        chat_indicators = {
-            "chao", "hello", "hi", "alo", "oi", "ban", "em", "anh", "tao", "may", "ai",
-            "sao", "gi", "nao", "khong", "ha", "nhi", "ke", "viet", "tu", "van", "hoi",
-            "buon", "vui", "met", "chan", "dep", "xau", "thoi", "tiet", "an", "uong",
-            "gui", "share", "chuyen", "up", "tim", "note", "lich",
-        }
-        words_norm = [w for w in re.split(r"[^a-z0-9]+", t_norm) if w]
-        if (
-            1 <= len(words_norm) <= 4
-            and not t.startswith("/")
-            and not any(w in chat_indicators for w in words_norm)
-            and "?" not in t
-        ):
-            sr = _smart_search_reply(t, chat_id)
-            if sr.get("handled") and "Không tìm thấy mục nào" not in sr.get("reply", ""):
-                if sr.get("matches"):
-                    LAST_CONTEXT.setdefault(chat_id, {})["last_item"] = sr["matches"][0]["name"]
-                return sr
+    # Nếu người dùng gõ trực tiếp mã dự án / tên file ngắn (vd: "psc hằng cần", "2510") không chứa từ khoá tán gẫu
+    chat_indicators = {
+        "chao", "hello", "hi", "alo", "oi", "ban", "em", "anh", "tao", "may", "ai",
+        "sao", "gi", "nao", "khong", "ha", "nhi", "ke", "viet", "tu", "van", "hoi",
+        "buon", "vui", "met", "chan", "dep", "xau", "thoi", "tiet", "an", "uong",
+        "gui", "share", "chuyen", "up", "tim", "note", "lich",
+    }
+    words_norm = [w for w in re.split(r"[^a-z0-9]+", t_norm) if w]
+    if (
+        1 <= len(words_norm) <= 4
+        and not t.startswith("/")
+        and not any(w in chat_indicators for w in words_norm)
+        and "?" not in t
+    ):
+        sr = _smart_search_reply(t, chat_id)
+        if sr.get("handled") and "Không tìm thấy mục nào" not in sr.get("reply", ""):
+            if sr.get("matches"):
+                LAST_CONTEXT.setdefault(chat_id, {})["last_item"] = sr["matches"][0]["name"]
+            return sr
 
-        try:
-            import importlib
-            import llm_intent
-            saved_hist = dict(getattr(llm_intent, "CHAT_HISTORY", {}))
-            importlib.reload(llm_intent)
-            llm_intent.CHAT_HISTORY.update(saved_hist)
-            last_item = LAST_CONTEXT.get(chat_id, {}).get("last_item")
-            gem_res = llm_intent.process_with_gemini(
-                t,
-                chat_id=chat_id,
-                last_item=last_item,
-                default_folder=get_default_gdrive_subfolder(),
-            )
-        except Exception:
-            gem_res = None
+    try:
+        import llm_intent
+        gem_res = llm_intent.process_with_gemini(
+            t,
+            chat_id=chat_id,
+        )
+    except Exception:
+        gem_res = None
 
-        if gem_res:
-            if gem_res.get("mode") == "cmd":
-                canonical = (gem_res.get("command") or "").strip()
-                if canonical and canonical.lower() != t.strip().lower():
-                    res = parse_and_execute_nl(canonical, chat_id, _from_llm=True)
-                    if res.get("matches"):
-                        LAST_CONTEXT.setdefault(chat_id, {})["last_item"] = res["matches"][0]["name"]
-                    if res.get("handled") and res.get("reply") and not res["reply"].startswith("🤔"):
-                        res["reply"] = f"🤖 Tôi hiểu ý bạn: \"{canonical}\"\n\n{res['reply']}"
-                        return res
-                    if res.get("open_dir"):
-                        return res
-            elif gem_res.get("mode") == "chat" and gem_res.get("reply"):
-                return {"handled": True, "reply": gem_res["reply"]}
+    if gem_res:
+        if gem_res.get("mode") == "cmd":
+            canonical = (gem_res.get("command") or "").strip()
+            if canonical and canonical.lower() != t.lower():
+                return {"handled": True, "reply": f"Gemini gợi ý lệnh này. Kiểm tra và tự gửi nếu đúng ý bạn:\n{canonical}"}
+        elif gem_res.get("mode") == "chat" and gem_res.get("reply"):
+            return {"handled": True, "reply": gem_res["reply"]}
 
-        # Dự phòng nếu không có mạng tới Gemini nhưng câu ngắn khớp tên file trên máy/Drive
-        if 1 <= len(t.split()) <= 7 and not t.startswith("/"):
-            sr = _smart_search_reply(t, chat_id)
-            if sr.get("handled") and "Không tìm thấy mục nào" not in sr.get("reply", ""):
-                if sr.get("matches"):
-                    LAST_CONTEXT.setdefault(chat_id, {})["last_item"] = sr["matches"][0]["name"]
-                return sr
+    # Dự phòng nếu không có mạng tới Gemini nhưng câu ngắn khớp tên file trên máy/Drive
+    if 1 <= len(t.split()) <= 7 and not t.startswith("/"):
+        sr = _smart_search_reply(t, chat_id)
+        if sr.get("handled") and "Không tìm thấy mục nào" not in sr.get("reply", ""):
+            if sr.get("matches"):
+                LAST_CONTEXT.setdefault(chat_id, {})["last_item"] = sr["matches"][0]["name"]
+            return sr
 
     return {
         "handled": True,
@@ -2179,29 +2126,18 @@ def parse_and_execute_nl(text: str, chat_id: int = 0, _from_llm: bool = False) -
     }
 
 
-_USER_GCAL_BIN = str(Path.home() / ".gemini" / "antigravity" / "bin" / "gcalendar")
-GCALENDAR_BIN = (
-    _USER_GCAL_BIN
-    if os.path.exists(_USER_GCAL_BIN)
-    else (shutil.which("gcalendar") or _USER_GCAL_BIN)
-)
-LOCAL_CALENDAR_PATH = Path(__file__).parent.resolve() / "local_calendar.json"
+LOCAL_CALENDAR_PATH = BASE_DIR / "local_calendar.json"
 
 
 def _save_local_calendar_event(summary: str, start_iso: str, end_iso: str) -> None:
     try:
+        events = json.loads(LOCAL_CALENDAR_PATH.read_text(encoding="utf-8"))
+    except FileNotFoundError:
         events = []
-        if LOCAL_CALENDAR_PATH.exists():
-            events = json.loads(LOCAL_CALENDAR_PATH.read_text(encoding="utf-8"))
-        events.append({
-            "summary": summary,
-            "start": {"date": start_iso},
-            "end": {"date": end_iso},
-            "status": "confirmed",
-        })
-        LOCAL_CALENDAR_PATH.write_text(json.dumps(events, indent=2, ensure_ascii=False), encoding="utf-8")
-    except Exception:
-        pass
+    events.append({
+        "summary": summary, "start": {"date": start_iso}, "end": {"date": end_iso}, "status": "confirmed",
+    })
+    write_private_json(LOCAL_CALENDAR_PATH, events)
 
 
 def _load_local_calendar_events(start_date, end_date) -> list[dict]:
@@ -2255,82 +2191,26 @@ def _build_gcal_template_url(summary: str, d_start, d_end_inclusive) -> str:
     return f"https://calendar.google.com/calendar/render?{params}"
 
 
-def _sync_to_macos_calendar(summary: str, d_start, d_end_inclusive) -> str | None:
-    """Wrapper tương thích ngược tạo sự kiện trên Calendar.app qua gcal_bridge."""
-    r = gcal_bridge.create_via_macos_calendar(summary, d_start, d_end_inclusive)
-    return r.get("calendar") if r.get("ok") else None
-
-
 def _format_gcal_note_reply(
-    res: dict,
-    content: str,
-    event_summary: str,
-    d,
-    d_end,
-    when_label: str,
-    is_lunar: bool = False,
-    lunar_label: str = "",
-    year_note: str = "",
+    res: dict, content: str, event_summary: str, d, d_end, when_label: str,
+    is_lunar: bool = False, lunar_label: str = "", year_note: str = "",
 ) -> dict:
-    """Định dạng phản hồi đồng nhất cho cả Âm lịch & Dương lịch sau khi gọi gcal_bridge."""
-    if res.get("synced_google"):
-        method = res.get("method", "")
-        cal_name = res.get("calendar") or "Google Calendar"
-        if method == "antigravity_cli":
-            method_line = "• 🤖 Tự động ghi qua Google Calendar CLI"
-        elif method == "apps_script":
-            method_line = f"• ☁️ Tự động ghi trực tiếp qua Google Apps Script ({cal_name})"
-        else:
-            method_line = f"• 🔄 Tự động đồng bộ 2 chiều qua Lịch macOS (tài khoản Google: {cal_name})"
-
-        if is_lunar:
-            lines = [
-                "📅 ĐÃ TỰ ĐỘNG GHI LỊCH GOOGLE (ĐỔI TỪ ÂM LỊCH):",
-                f"• 🌙 Âm lịch: {lunar_label}",
-                f"• ☀️ Dương lịch: {when_label}{year_note}",
-                f"• 📝 Nội dung: {content}",
-                method_line,
-            ]
-        else:
-            lines = [
-                "📅 ĐÃ TỰ ĐỘNG GHI LỊCH GOOGLE:",
-                f"• Ngày: {when_label}",
-                f"• Nội dung: {content}",
-                method_line,
-            ]
-        if res.get("link"):
-            lines.append(f"🔗 {res['link']}")
-        return {"handled": True, "reply": "\n".join(lines)}
-
-    # Máy chưa bật đồng bộ Google trên Calendar.app và chưa dán Apps Script Webhook
-    gcal_url = _build_gcal_template_url(event_summary, d, d_end)
-    gcal_markup = {
-        "inline_keyboard": [
-            [{"text": "📅 Lưu vào Google Calendar (Web)", "url": gcal_url}],
-            [{"text": "⚡ Bật tự động lưu Google Calendar (không cần bấm)", "callback_data": "gcal_setup_guide"}],
-        ]
-    }
-    if res.get("calendar"):
-        mac_note = f"\n• 🖥 Đã ghi vào Lịch nội bộ trên máy Mac ({res['calendar']}), chưa có tài khoản Google."
-    else:
-        mac_note = "\n• 💾 Đã lưu tạm vào lịch nội bộ của bot trên máy Mac."
-
+    method = res["method"]
+    detail = f"{when_label}{year_note} — {content}"
     if is_lunar:
-        reply = (
-            f"📅 ĐÃ LƯU LỊCH TẠM (ĐỔI TỪ ÂM LỊCH):\n"
-            f"• 🌙 Âm lịch: {lunar_label}\n"
-            f"• ☀️ Dương lịch: {when_label}{year_note}\n"
-            f"• 📝 Nội dung: {content}{mac_note}\n\n"
-            f"👇 Bạn có thể bấm lưu nhanh trên web, hoặc bấm *⚡ Bật tự động* để từ sau bot tự đẩy thẳng lên Google Calendar:"
-        )
+        detail = f"Âm lịch {lunar_label} → {detail}"
+    if method == "uncertain":
+        reply = f"Chưa xác nhận được sự kiện đã lưu: {detail}\nKiểm tra trong lịch trước khi thử lại."
+    elif method == "local":
+        return {"handled": True, "reply": f"Đã lưu vào lịch của bot: {detail}", "reply_markup": {
+            "inline_keyboard": [[{"text": "Mở Google Calendar để lưu thêm", "url": _build_gcal_template_url(event_summary, d, d_end)}]]
+        }}
     else:
-        reply = (
-            f"📅 ĐÃ LƯU LỊCH TẠM:\n"
-            f"• Ngày: {when_label}\n"
-            f"• Nội dung: {content}{mac_note}\n\n"
-            f"👇 Bạn có thể bấm lưu nhanh trên web, hoặc bấm *⚡ Bật tự động* để từ sau bot tự đẩy thẳng lên Google Calendar:"
-        )
-    return {"handled": True, "reply": reply, "reply_markup": gcal_markup}
+        location = res.get("calendar") or "Google Calendar"
+        reply = f"Đã ghi lịch ({location}): {detail}"
+        if method == "macos_calendar":
+            reply += "\nHãy kiểm tra trạng thái đồng bộ với Google trong Lịch trên Mac."
+    return {"handled": True, "reply": reply}
 
 
 def _try_note_calendar(t: str) -> dict | None:
@@ -2369,8 +2249,9 @@ def _try_note_calendar(t: str) -> dict | None:
         when_solar = d.strftime('%d/%m/%Y') if d == d_end else f"{d.strftime('%d/%m/%Y')} → {d_end.strftime('%d/%m/%Y')}"
         year_note = " (Năm sau)" if d.year > datetime.date.today().year else ""
 
-        _save_local_calendar_event(event_summary, start, end)
-        res = gcal_bridge.create_google_calendar_event(event_summary, d, d_end, gcalendar_bin=GCALENDAR_BIN)
+        res = gcal_bridge.create_google_calendar_event(event_summary, d, d_end)
+        if res["method"] == "local":
+            _save_local_calendar_event(event_summary, start, end)
         return _format_gcal_note_reply(
             res=res,
             content=content,
@@ -2440,8 +2321,9 @@ def _try_note_calendar(t: str) -> dict | None:
     end = (d_end + datetime.timedelta(days=1)).isoformat()
     when = d.strftime('%d/%m/%Y') if d == d_end else f"{d.strftime('%d/%m/%Y')} → {d_end.strftime('%d/%m/%Y')}"
 
-    _save_local_calendar_event(content, start, end)
-    res = gcal_bridge.create_google_calendar_event(content, d, d_end, gcalendar_bin=GCALENDAR_BIN)
+    res = gcal_bridge.create_google_calendar_event(content, d, d_end)
+    if res["method"] == "local":
+        _save_local_calendar_event(content, start, end)
     return _format_gcal_note_reply(
         res=res,
         content=content,
@@ -2564,8 +2446,6 @@ def _parse_query_range(tl: str):
 def _try_calendar_query(t: str) -> dict | None:
     """Answer questions like 'ngày 25.10 tôi có bao nhiêu lịch' by listing Google Calendar events."""
     import datetime
-    import json as _json
-    import subprocess
 
     tl = t.lower().strip()
     if re.match(r"^(note|ghi|thêm|them|tạo|tao)\b", tl):
@@ -2581,21 +2461,14 @@ def _try_calendar_query(t: str) -> dict | None:
         return None
 
     start, end, label = rng
-    s_iso = f"{start.isoformat()}T00:00:00+07:00"
-    e_iso = f"{(end + datetime.timedelta(days=1)).isoformat()}T00:00:00+07:00"
-    events = []
-    if Path(GCALENDAR_BIN).exists():
-        try:
-            res = subprocess.run(
-                [GCALENDAR_BIN, "readonly", "events", "--start", s_iso, "--end", e_iso, "--max", "100", "--json"],
-                capture_output=True, text=True, timeout=60,
-            )
-            if res.returncode == 0:
-                events = _json.loads(res.stdout or "[]")
-        except Exception:
-            events = []
-    if not events and gcal_bridge.get_webhook_url():
-        events = gcal_bridge.list_via_webhook(s_iso, e_iso)
+    s_iso = datetime.datetime.combine(start, datetime.time()).astimezone().isoformat()
+    e_iso = datetime.datetime.combine(end + datetime.timedelta(days=1), datetime.time()).astimezone().isoformat()
+    remote_failed = False
+    try:
+        events = gcal_bridge.list_events(s_iso, e_iso)
+    except (OSError, ValueError, subprocess.SubprocessError):
+        events = []
+        remote_failed = True
 
     # Gộp thêm các sự kiện local chưa có trên cloud (tránh trùng theo tiêu đề + ngày bắt đầu)
     local_evs = _load_local_calendar_events(start, end)
@@ -2617,7 +2490,8 @@ def _try_calendar_query(t: str) -> dict | None:
 
     events = [e for e in events if e.get("status") != "cancelled"]
     if not events:
-        return {"handled": True, "reply": f"📅 {label}: bạn không có lịch nào."}
+        reply = "Chưa đọc được lịch đã kết nối. Bot cũng không có lịch lưu cục bộ." if remote_failed else f"📅 {label}: chưa có sự kiện."
+        return {"handled": True, "reply": reply}
 
     items = []
     for ev in events:
@@ -2627,7 +2501,9 @@ def _try_calendar_query(t: str) -> dict | None:
             continue
         items.append((key, tlabel, ev.get("summary") or "(không tiêu đề)"))
     items.sort()
-    lines = [f"📅 {label}: bạn có {len(items)} lịch\n"]
+    lines = [f"📅 {label}: có {len(items)} sự kiện\n"]
+    if remote_failed:
+        lines.append("Chưa đọc được lịch đã kết nối. Dưới đây là các sự kiện lưu trong bot.")
     for i, (_, tlabel, title) in enumerate(items, 1):
         lines.append(f"{i}. {tlabel}\n    {title}")
     return {"handled": True, "reply": "\n".join(lines)}
@@ -2640,16 +2516,11 @@ SEARCH_STOPWORDS = {
 
 
 def _search_priority_roots() -> list[tuple[Path, int, float]]:
-    """(root, max_depth, time_budget_seconds) in priority order: SOURCE, FILM DATA, rest."""
+    """Search configured media roots, mounted drives and the user's folders."""
     home = Path.home()
     roots: list[tuple[Path, int, float]] = []
-    roots.append((home / "Desktop" / "SOURCE", 5, 8.0))
-    roots.append((Path("/Volumes/FILM DATA"), 5, 15.0))
-    volumes = Path("/Volumes")
-    if volumes.exists():
-        for v in sorted(volumes.iterdir()):
-            if v.name != "FILM DATA" and not is_ignored_dir(v.name):
-                roots.append((v, 4, 8.0))
+    roots.extend((Path(path), 5, 8.0) for path in read_config().get("media_roots", []))
+    roots.extend((vol, 4, 8.0) for vol in mounted_roots() if not is_ignored_dir(vol.name))
     for sub in ("Desktop", "Downloads", "Documents", "Movies", "Pictures"):
         roots.append((home / sub, 4, 6.0))
     gd_root = find_google_drive_root(auto_launch=False)
@@ -2679,7 +2550,7 @@ def _token_score(qt: str, name_tokens: list[str], name_norm: str) -> float:
 
 def smart_search(raw_query: str, limit: int = 12) -> tuple[list[dict], list[str]]:
     """
-    Search the whole machine. Priority: Desktop/SOURCE, then FILM DATA, then other drives/folders.
+    Search configured media directories and mounted drives.
     Returns (results sorted by relevance, query_tokens). Each result has path/name/is_dir/score/exact.
     """
     import time as _time
@@ -2896,7 +2767,7 @@ def _smart_search_reply(raw_query: str, chat_id: int = 0) -> dict:
         exact = [r for r in results if r["exact"]]
         related = [r for r in results if not r["exact"]]
 
-        lines.append("💽 TRÊN MÁY MAC & Ổ CỨNG (Ưu tiên SOURCE & FILM DATA):")
+        lines.append("💽 TRÊN MÁY & Ổ CỨNG:")
         n = 0
         if exact:
             for r in exact[:5]:
@@ -2968,19 +2839,10 @@ def _execute_get_gdrive_link(raw_query: str, chat_id: int = 0) -> dict:
 
 
 def _prepare_gdrive_confirmation(raw_target: str, subfolder: str, chat_id: int) -> dict:
-    gdrive_root = find_google_drive_root(auto_launch=True)
-    if not gdrive_root:
-        return {
-            "handled": True,
-            "reply": "❌ Chưa tìm thấy thư mục Google Drive trên máy Mac. Bạn hãy mở ứng dụng Google Drive.app trước nhé!",
-        }
-
-    effective_subfolder = subfolder.strip() if subfolder and subfolder.strip() else get_default_gdrive_subfolder()
-    dst_dir = resolve_subfolder_fuzzy(gdrive_root, effective_subfolder)
     try:
-        dst_dir.mkdir(parents=True, exist_ok=True)
-    except OSError:
-        pass
+        dst_dir = safe_fs.drive_upload_destination(subfolder)
+    except (ValueError, OSError) as exc:
+        return {"handled": True, "reply": str(exc)}
     dst_display = f"Google Drive / {dst_dir.name}"
 
     item_name, parent_hint, root_hint, type_hint = parse_source_specification(raw_target)
@@ -3006,7 +2868,7 @@ def _prepare_gdrive_confirmation(raw_target: str, subfolder: str, chat_id: int) 
                 }
                 lines = [
                     f"📂 Đã mở thư mục `{parent_dir.name}` ({parent_dir}), nhưng không thấy file tên '{item_name}'.\n"
-                    f"☁️ Đích mặc định: `{dst_display}` (Tự động lấy link sau khi Up)\n\n"
+                    f"☁️ Đích mặc định: `{dst_display}` \n\n"
                     f"👉 Bạn muốn upload file nào trong `{parent_dir.name}` lên `{dst_dir.name}`? (Bấm chọn bên dưới hoặc nhắn số thứ tự):"
                 ]
                 for i, c in enumerate(candidates[:10], 1):
@@ -3050,7 +2912,7 @@ def _prepare_gdrive_confirmation(raw_target: str, subfolder: str, chat_id: int) 
     else:
         lines = [
             f"🔍 Tìm thấy {len(candidates)} mục khớp với '{item_name}'.\n"
-            f"☁️ Thư mục đích mặc định: `{dst_display}` (Tự động gửi link sau khi Up)\n\n"
+            f"☁️ Thư mục đích mặc định: `{dst_display}` \n\n"
             f"👉 Bạn muốn upload mục nào lên `{dst_dir.name}`? (Bấm trực tiếp nút bên dưới hoặc nhắn số 1, 2...):\n"
         ]
         for i, c in enumerate(candidates, 1):

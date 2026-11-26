@@ -1,25 +1,5 @@
 {
-  "version": "1.7.2",
-  "release_notes": "• Tính năng mới — Tự động ghi & xem Google Calendar 100% KHÔNG cần cài Antigravity:\n  - Cách 1 (0 dòng code): Tự động phát hiện và ghi thẳng vào tài khoản Google đang bật trong Lịch macOS (Calendar.app) + tự reload đồng bộ 2 chiều lên Google Calendar mà không cần bấm lưu trên web.\n  - Cách 2 (Google Apps Script Bridge — 1 phút): Gõ /gcal để lấy mã Apps Script, deploy Web App và dán link `/exec` vào Telegram để bot vừa Ghi vừa Đọc trực tiếp từ Google Calendar API.\n  - Sửa UX thông báo lịch rõ ràng hơn và bổ sung nút mở nhanh Cài đặt Tài khoản Internet trên Mac.",
-  "files": {
-    "bot.py": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/bot.py",
-    "safe_fs.py": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/safe_fs.py",
-    "gdrive_offload.py": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/gdrive_offload.py",
-    "nl_engine.py": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/nl_engine.py",
-    "mac_remote.py": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/mac_remote.py",
-    "gcal_bridge.py": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/gcal_bridge.py",
-    "llm_intent.py": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/llm_intent.py",
-    "lunar_calendar.py": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/lunar_calendar.py",
-    "zalo_sender.py": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/zalo_sender.py",
-    "updater.py": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/updater.py",
-    "install_core.py": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/install_core.py",
-    "CaiDat.command": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/CaiDat.command",
-    "KhoiDongLai.command": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/KhoiDongLai.command",
-    "DoiThuMucDrive.command": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/DoiThuMucDrive.command",
-    "KiemTraLoi.command": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/KiemTraLoi.command",
-    "GoCaiDat.command": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/GoCaiDat.command",
-    "HuongDanLayMa.html": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/HuongDanLayMa.html",
-    "HUONG_DAN_NHANH.txt": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/HUONG_DAN_NHANH.txt",
-    "README.md": "https://raw.githubusercontent.com/thienungmedia/MediaTeleBot/main/README.md"
-  }
+  "version": "1.8.0",
+  "release_notes": "MediaTeleBot hiện phân phối bản cập nhật qua GitHub Releases. Hãy cài bộ cài phù hợp hoặc cập nhật từ mã nguồn.",
+  "files": {}
 }
